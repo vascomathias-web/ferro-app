@@ -1,0 +1,8 @@
+# normalisation des fins de ligne pour un build Linux fiable
+* text=auto
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.keystore binary
