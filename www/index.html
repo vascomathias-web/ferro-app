@@ -629,7 +629,9 @@
     // 0) APPLI NATIVE (Capacitor) : magnétomètre brut via plugin natif, aucune restriction navigateur
     if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
       try{
-        nativeMag=Capacitor.registerPlugin('Magneto');
+        const P=Capacitor.Plugins||{};
+        nativeMag = P.Magneto || (typeof Capacitor.registerPlugin==='function' ? Capacitor.registerPlugin('Magneto') : null);
+        if(!nativeMag) throw new Error('plugin Magneto introuvable dans Capacitor.Plugins');
         await nativeMag.addListener('reading',d=>onReading(d.x,d.y,d.z));
         await nativeMag.start({frequency:50});
         sensorMode='mag';
