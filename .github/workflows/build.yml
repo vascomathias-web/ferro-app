@@ -29,6 +29,12 @@ jobs:
       - name: Install SDK packages
         run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Cache debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ferro-debug-keystore-v1
+
       - name: Install npm deps
         run: npm ci
 
