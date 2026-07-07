@@ -1,0 +1,13 @@
+# dépendances (régénérées par npm ci sur le cloud)
+node_modules/
+
+# sorties de build Android
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+
+# divers
+.DS_Store
+*.log

@@ -1,0 +1,8 @@
+{
+  "appId": "com.vasco.ferro",
+  "appName": "Ferro",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

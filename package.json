@@ -1,0 +1,16 @@
+{
+  "name": "ferro",
+  "version": "1.0.0",
+  "description": "Ferro — détecteur magnétique",
+  "private": true,
+  "scripts": {
+    "cap": "cap"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

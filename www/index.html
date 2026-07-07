@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0e14">
+<title>Ferro — Détecteur magnétique</title>
+<link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkZlcnJvIC0gRMOpdGVjdGV1ciBtYWduw6l0aXF1ZSIsCiAgInNob3J0X25hbWUiOiAiRmVycm8iLAogICJzdGFydF91cmwiOiAiLiIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgImJhY2tncm91bmRfY29sb3IiOiAiIzBhMGUxNCIsCiAgInRoZW1lX2NvbG9yIjogIiMwYTBlMTQiCn0=">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111823; --line:#1e2a3a; --dim:#5a6b82; --text:#c8d4e4;
+    --live:#3dd9a3; --warn:#f2c14e; --hot:#ff5252;
+    --mono:'SF Mono',ui-monospace,'Roboto Mono','Cascadia Code',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);
+    display:flex;flex-direction:column;user-select:none;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;padding:16px 20px 8px}
+  .brand{font-size:15px;letter-spacing:4px;font-weight:600}
+  .brand b{color:var(--live)}
+  .status{display:flex;align-items:center;gap:7px;font-size:10px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none;transition:background .2s}
+  .dot.live{background:var(--live);animation:pulse 1.6s ease-in-out infinite}
+  .dot.cal{background:var(--warn);animation:pulse .8s ease-in-out infinite}
+  .dot.pause{background:var(--dim);animation:none;opacity:.5}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 currentColor;opacity:1}50%{box-shadow:0 0 8px 1px currentColor;opacity:.55}}
+  .dot.live{color:var(--live)}.dot.cal{color:var(--warn)}
+
+  .axis{margin-top:10px;display:inline-flex;align-items:center;gap:8px;font-size:10px;letter-spacing:2px;
+    color:var(--dim);text-transform:uppercase}
+  .axis em{font-style:normal}
+  .axis b{min-width:14px;text-align:center;font-size:13px;letter-spacing:0;color:var(--text);
+    padding:2px 8px;border:1px solid var(--line);border-radius:6px;transition:color .2s,border-color .2s}
+
+  /* onglets */
+  .tabs{display:flex;gap:8px;padding:4px 16px 10px}
+  .tab{flex:1;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;
+    padding:10px;border:1px solid var(--line);background:var(--panel);color:var(--dim);
+    border-radius:9px;cursor:pointer;transition:.15s}
+  .tab.active{border-color:var(--live);color:var(--live)}
+  .tab:active{transform:scale(.97)}
+
+  .screen{flex:1;min-height:0;display:none;flex-direction:column}
+  .screen.active{display:flex}
+
+  /* ---------- MODE CADRAN ---------- */
+  .stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0}
+  .dial{position:relative;width:min(68vw,280px);aspect-ratio:1;display:flex;align-items:center;justify-content:center}
+  .ring{position:absolute;inset:0;border-radius:50%;border:1px solid var(--line)}
+  .ring.r2{inset:10%}.ring.r3{inset:22%}
+  svg.gauge{position:absolute;inset:0;transform:rotate(-90deg)}
+  .gauge .track{fill:none;stroke:var(--line);stroke-width:5}
+  .gauge .fill{fill:none;stroke:var(--live);stroke-width:5;stroke-linecap:round;
+    transition:stroke .25s,stroke-dashoffset .06s linear;filter:drop-shadow(0 0 6px currentColor)}
+  .readout{text-align:center;z-index:2}
+  .value{font-size:44px;font-weight:600;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;transition:color .2s}
+  .unit{font-size:11px;color:var(--dim);letter-spacing:2px;margin-top:4px}
+  .verdict{margin-top:12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);min-height:15px;transition:color .2s}
+  .sweep{height:74px;margin:0 16px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);position:relative;overflow:hidden}
+  .sweep .lbl{position:absolute;top:6px;left:10px;font-size:9px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase;z-index:2}
+  canvas{display:block;width:100%;height:100%}
+
+  /* ---------- MODE SCAN ---------- */
+  .scanWrap{flex:1;position:relative;margin:0 14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000}
+  #scanCanvas{width:100%;height:100%}
+  .scanHint{position:absolute;top:10px;left:0;right:0;text-align:center;font-size:10px;
+    letter-spacing:1.5px;color:var(--dim);text-transform:uppercase;pointer-events:none;z-index:3}
+  .scanScale{position:absolute;bottom:8px;left:12px;right:12px;display:flex;justify-content:space-between;
+    font-size:9px;color:var(--dim);letter-spacing:1px;pointer-events:none;z-index:3}
+  .liveStrip{position:absolute;top:0;bottom:0;right:0;width:34%;pointer-events:none;z-index:1}
+
+  /* ---------- Contrôles partagés ---------- */
+  .controls{padding:12px 16px 16px;display:flex;flex-direction:column;gap:12px}
+  .row{display:flex;gap:14px}
+  .ctrl{flex:1}
+  .ctrl label{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+  .ctrl label span{color:var(--text)}
+  input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--live);box-shadow:0 0 0 4px rgba(61,217,163,.15)}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-radius:50%;background:var(--live)}
+  .toggles{display:flex;gap:10px}
+  button{flex:1;font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+    padding:13px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer;transition:.15s}
+  button:active{transform:scale(.97)}
+  button.primary{background:var(--live);color:#04120c;border-color:var(--live);font-weight:600}
+  button.on{background:var(--warn);color:#1a1300;border-color:var(--warn)}
+  .tog.active{border-color:var(--live);color:var(--live)}
+  .btns{display:flex;gap:10px}
+
+  .gate{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:32px;gap:20px}
+  .gate h1{font-size:20px;letter-spacing:6px;font-weight:600}.gate h1 b{color:var(--live)}
+  .gate p{font-size:12px;color:var(--dim);line-height:1.9;max-width:340px;letter-spacing:.5px}
+  .gate .go{max-width:260px;width:100%;padding:16px}
+  .err{color:var(--hot);font-size:11px;line-height:1.7;max-width:320px;letter-spacing:.5px;white-space:pre-line;text-align:left}
+  .hidden{display:none!important}
+
+  /* ---------- TUTO 1er lancement ---------- */
+  .tuto{position:fixed;inset:0;background:var(--bg);z-index:60;display:flex;align-items:center;
+    justify-content:center;padding:24px;overflow:auto}
+  .tutoCard{max-width:380px;width:100%;display:flex;flex-direction:column;gap:18px}
+  .tutoCard h2{font-size:15px;letter-spacing:3px;text-transform:uppercase;color:var(--text);text-align:center}
+  .tutoList{list-style:none;display:flex;flex-direction:column;gap:15px}
+  .tutoList li{display:flex;gap:12px;align-items:flex-start;font-size:12px;line-height:1.6;color:var(--dim)}
+  .tutoList li b{color:var(--text)}
+  .tutoList svg{width:22px;height:22px;flex:none;stroke:var(--live);fill:none;stroke-width:1.7;
+    stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+  .tutoCard .primary{padding:15px}
+
+  /* ---------- BANNIÈRE CALIBRATION ---------- */
+  .calBanner{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:20;pointer-events:none;
+    display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;
+    background:rgba(10,14,20,.82);padding:22px 30px;border:1px solid var(--line);border-radius:16px}
+  .calBanner svg{width:52px;height:52px;stroke:var(--live);fill:none;stroke-width:1.6;stroke-linecap:round}
+  .calBanner svg circle{stroke-dasharray:7 9;animation:trace 1.1s linear infinite}
+  @keyframes trace{to{stroke-dashoffset:-32}}
+  .calBanner .calTxt{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--text)}
+  .calBanner .calSub{font-size:12px;letter-spacing:1px;color:var(--live);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div class="tuto" id="tuto">
+  <div class="tutoCard">
+    <h2>Avant de commencer</h2>
+    <ul class="tutoList">
+      <li><svg viewBox="0 0 24 24"><path d="M7 3v8a5 5 0 0 0 10 0V3"/><path d="M4 3h6M14 3h6"/></svg><div><b>Ferro détecte le fer.</b> Acier, clous, vis, tuyaux — mais ni bois, ni aluminium, ni cuivre.</div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 15l5-4"/></svg><div><b>Jauge</b> : proximité d'une masse. <b>Scan</b> : balaye le mur, touche un pic pour l'épingler.</div></li>
+      <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg><div><b>Trouver un montant ?</b> Repère l'alignement des vis et clous : c'est eux qu'on capte, pas le bois.</div></li>
+      <li><svg viewBox="0 0 24 24"><path d="M21 5v6h-6"/><path d="M18.5 15a7 7 0 1 1-1.6-7.3L21 11"/></svg><div><b>Bouge librement.</b> La détection ignore la rotation. Recalibre si les chiffres dérivent.</div></li>
+    </ul>
+    <button class="primary" id="tutoBtn">J'ai compris</button>
+  </div>
+</div>
+
+<div class="gate" id="gate">
+  <h1>FER<b>RO</b></h1>
+  <p>Détecteur de masses métalliques par magnétomètre. Deux modes : jauge de proximité, et scan qui dessine les montants en balayant le mur.</p>
+  <button class="primary go" id="startBtn">Démarrer le capteur</button>
+  <div class="err hidden" id="gateErr"></div>
+</div>
+
+<header>
+  <div class="brand">FER<b>RO</b></div>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusTxt">— μT</span></div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-screen="meter" id="tabMeter">Jauge</button>
+  <button class="tab" data-screen="scan" id="tabScan">Scan mur</button>
+</div>
+
+<!-- ===== MODE JAUGE ===== -->
+<div class="screen active" id="meter">
+  <div class="stage">
+    <div class="dial">
+      <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
+      <svg class="gauge" viewBox="0 0 200 200">
+        <circle class="track" cx="100" cy="100" r="92"></circle>
+        <circle class="fill" id="gFill" cx="100" cy="100" r="92"></circle>
+      </svg>
+      <div class="readout">
+        <div class="value" id="val">0.0</div>
+        <div class="unit" id="unit">ANOMALIE μT</div>
+        <div class="verdict" id="verdict">calibrage…</div>
+        <div class="axis" id="axis"><em>AXE</em><b id="axisVal">—</b></div>
+      </div>
+    </div>
+  </div>
+  <div class="sweep">
+    <span class="lbl">Signal dans le temps</span>
+    <canvas id="wave"></canvas>
+  </div>
+</div>
+
+<!-- ===== MODE SCAN ===== -->
+<div class="screen" id="scan">
+  <div class="scanWrap">
+    <canvas id="scanCanvas"></canvas>
+    <div class="scanHint" id="scanHint">Balaye lentement · touche un pic pour l'épingler</div>
+    <div class="scanScale"><span>◀ départ</span><span>maintenant ▶</span></div>
+  </div>
+</div>
+
+<!-- ===== BANNIÈRE CALIBRATION ===== -->
+<div class="calBanner hidden" id="calBanner">
+  <svg viewBox="0 0 24 24"><circle cx="8.5" cy="12" r="4.6"/><circle cx="15.5" cy="12" r="4.6"/></svg>
+  <div class="calTxt" id="calTxt">Trace un 8 dans l'air</div>
+  <div class="calSub" id="calSub">4 s</div>
+</div>
+
+<!-- ===== CONTRÔLES ===== -->
+<div class="controls">
+  <div class="row">
+    <div class="ctrl">
+      <label>Sensibilité <span id="sensVal">×5</span></label>
+      <input type="range" id="sens" min="1" max="20" value="5" step="1">
+    </div>
+    <div class="ctrl">
+      <label>Lissage <span id="smoothVal">30%</span></label>
+      <input type="range" id="smooth" min="0" max="90" value="30" step="5">
+    </div>
+  </div>
+  <div class="toggles">
+    <button class="tog active" id="hapticBtn">Vibration ON</button>
+    <button class="tog" id="audioBtn">Son OFF</button>
+  </div>
+  <div class="btns">
+    <button class="primary" id="calBtn">Recalibrer</button>
+    <button id="actionBtn">Hold</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const el = id => document.getElementById(id);
+
+  let sensor=null, running=false, hold=false, mode='meter';
+  let baseline=null, smoothed=0;
+  let haptic=true, audioOn=false;
+  let calibrating=false, calSamples=[], calStart=0;
+  let audioCtx=null, osc=null, gain=null, lastBuzz=0;
+  let sensitivity=5, alpha=0.30;
+  // état d'affichage (mis à jour seulement au changement, pour éviter le churn DOM)
+  let dotState='', shownAxis='', lastAxisT=0, lastStatusT=0, waveDirty=false, lastCol='';
+  const CAL8_MS=4000, CALHOLD_MS=1500, HARDIRON_MIN=15;  // durées des 2 phases ; amplitude min/axe pour valider le hard-iron
+  let calPhase=0, lastCalSec=-1, hardIron={x:0,y:0,z:0}, calMin=null, calMax=null;
+
+  // précision : filtre médian anti-pics + détection de mouvement via accéléromètre
+  let medX=[],medY=[],medZ=[], moving=false,lastMoveT=0, accel=null,lastAcc=null;
+  const MED=5, DRIFT=0.003;   // fenêtre médiane (5 = ~100ms à 50Hz) ; vitesse de recalibrage dérive
+
+  // mode « boussole » (fallback quand le magnétomètre brut n'est pas exposé — Chrome récent)
+  let sensorMode='mag', gyro=null, rotRate=0, baseAlpha=null, orientHandler=null, orientEvt='', nativeMag=null;
+  const ODEAD=5, ODRIFT=0.01;   // zone morte anti-bruit (°) ; recalage permanent de la baseline boussole
+  function median(a){const s=a.slice().sort((p,q)=>p-q);return s[s.length>>1];}
+  function pushMed(buf,v){buf.push(v);if(buf.length>MED)buf.shift();return median(buf);}
+
+  // scan state — rendu incrémental sur buffer offscreen (O(1) par échantillon)
+  let scanPending=[], scanPainted=0, sbWd=0, sbHd=0, STEP_D=2;
+  let marks=[], scanDirty=false, scanDpr=1;   // épingles (px device), drapeau de redraw, dpr courant
+
+  const valEl=el('val'),verdictEl=el('verdict'),statusEl=el('statusTxt'),gFill=el('gFill'),
+        dot=el('dot'),axisValEl=el('axisVal'),scanHintEl=el('scanHint'),
+        calBannerEl=el('calBanner'),calTxtEl=el('calTxt'),calSubEl=el('calSub'),
+        sensR=el('sens'),smoothR=el('smooth'),sensVal=el('sensVal'),smoothVal=el('smoothVal');
+
+  const R=92,CIRC=2*Math.PI*R;
+  gFill.style.strokeDasharray=CIRC; gFill.style.strokeDashoffset=CIRC;
+
+  // canvas wave (jauge)
+  const cv=el('wave'),ctx=cv.getContext('2d'); let hist=[];
+  // canvas scan visible + buffer offscreen (blit 1:1, sans scale de contexte)
+  const sc=el('scanCanvas'),sctx=sc.getContext('2d');
+  const scanBuf=document.createElement('canvas'),sbx=scanBuf.getContext('2d');
+
+  function sizeCanvas(c){const r=c.getBoundingClientRect(),dpr=devicePixelRatio||1;
+    c.width=r.width*dpr;c.height=r.height*dpr;const cx=c.getContext('2d');cx.setTransform(1,0,0,1,0,0);cx.scale(dpr,dpr);}
+
+  // indicateur d'état du capteur : ne touche le DOM qu'au changement
+  function setState(s){if(s===dotState)return;dotState=s;dot.className='dot '+s;}
+
+  // (re)dimensionne le canvas scan + son buffer en pixels device
+  function sizeScan(){
+    const r=sc.getBoundingClientRect(),dpr=devicePixelRatio||1;
+    sbWd=Math.max(1,Math.round(r.width*dpr));sbHd=Math.max(1,Math.round(r.height*dpr));
+    sc.width=sbWd;sc.height=sbHd;scanBuf.width=sbWd;scanBuf.height=sbHd;
+    sbx.fillStyle='#000';sbx.fillRect(0,0,sbWd,sbHd);
+    STEP_D=Math.max(1,Math.round(2*dpr));scanDpr=dpr;scanPending.length=0;marks.length=0;scanDirty=true;
+  }
+
+  // --- persistance des réglages ---
+  function saveSettings(){
+    try{localStorage.setItem('ferro.settings',JSON.stringify(
+      {sens:sensitivity,smooth:+smoothR.value,audio:audioOn,haptic:haptic}));}catch(e){}
+  }
+  function loadSettings(){
+    let s;try{s=JSON.parse(localStorage.getItem('ferro.settings')||'null');}catch(e){}
+    if(!s)return;
+    if(s.sens){sensitivity=s.sens;sensR.value=s.sens;sensVal.textContent='×'+s.sens;}
+    if(s.smooth!=null){alpha=s.smooth/100;smoothR.value=s.smooth;smoothVal.textContent=s.smooth+'%';}
+    haptic=s.haptic!==false;
+    const hb=el('hapticBtn');hb.classList.toggle('active',haptic);hb.textContent='Vibration '+(haptic?'ON':'OFF');
+    audioOn=!!s.audio;
+    const ab=el('audioBtn');ab.classList.toggle('active',audioOn);ab.textContent='Son '+(audioOn?'ON':'OFF');
+  }
+  loadSettings();
+
+  // --- réglages ---
+  sensR.oninput=()=>{sensitivity=+sensR.value;sensVal.textContent='×'+sensitivity;saveSettings();};
+  smoothR.oninput=()=>{alpha=+smoothR.value/100;smoothVal.textContent=smoothR.value+'%';saveSettings();};
+  el('hapticBtn').onclick=e=>{haptic=!haptic;e.target.classList.toggle('active',haptic);e.target.textContent='Vibration '+(haptic?'ON':'OFF');saveSettings();};
+  el('audioBtn').onclick=e=>{audioOn=!audioOn;e.target.classList.toggle('active',audioOn);e.target.textContent='Son '+(audioOn?'ON':'OFF');audioOn?initAudio():stopAudio();saveSettings();};
+  el('calBtn').onclick=startCalibration;
+  el('actionBtn').onclick=e=>{
+    if(mode==='scan'){ sizeScan(); scanPainted=0; scanHintEl.style.display='block'; return; }
+    hold=!hold;e.target.classList.toggle('on',hold);e.target.textContent=hold?'Held':'Hold';
+  };
+
+  // onglets
+  document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+    mode=t.dataset.screen;
+    document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
+    el('meter').classList.toggle('active',mode==='meter');
+    el('scan').classList.toggle('active',mode==='scan');
+    // le bouton d'action change selon le mode
+    const ab=el('actionBtn');
+    if(mode==='scan'){ ab.textContent='Effacer'; ab.classList.remove('on'); hold=false; setTimeout(sizeScan,30); }
+    else ab.textContent=hold?'Held':'Hold';
+  });
+
+  // --- épingles : toucher pose un repère, retoucher près d'un repère l'enlève ---
+  sc.addEventListener('pointerdown',e=>{
+    if(mode!=='scan'||!running)return;
+    const r=sc.getBoundingClientRect(),x=(e.clientX-r.left)*scanDpr,near=14*scanDpr;
+    for(let k=0;k<marks.length;k++){if(Math.abs(marks[k]-x)<near){marks.splice(k,1);scanDirty=true;return;}}
+    marks.push(x);scanDirty=true;
+  });
+
+  // --- audio ---
+  function initAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    osc=audioCtx.createOscillator();gain=audioCtx.createGain();osc.type='sine';gain.gain.value=0;
+    osc.connect(gain);gain.connect(audioCtx.destination);osc.start();}catch(e){}}
+  function stopAudio(){if(gain)gain.gain.value=0;}
+  function driveAudio(n){if(!audioOn||!osc)return;osc.frequency.value=220+n*900;gain.gain.value=Math.min(0.12,n*0.14);}
+
+  function calBannerShow(t){calBannerEl.classList.remove('hidden');calTxtEl.textContent=t;calSubEl.textContent='4 s';}
+  function calBannerHide(){calBannerEl.classList.add('hidden');}
+
+  function startCalibration(){
+    calibrating=true;calStart=performance.now();lastCalSec=-1;calSamples.length=0;
+    medX.length=medY.length=medZ.length=0;
+    setState('cal');verdictEl.textContent='calibrage…';verdictEl.style.color='var(--dim)';
+    if(sensorMode==='orient'){        // boussole : simple immobilisation
+      calPhase=2;calBannerShow('Immobilise le téléphone');calSubEl.textContent='1 s';
+    }else{                            // magnétomètre : phase « 8 » (hard-iron) puis immobilisation
+      calPhase=1;calMin={x:1e9,y:1e9,z:1e9};calMax={x:-1e9,y:-1e9,z:-1e9};
+      calBannerShow('Trace un 8 dans l\'air');
+    }
+  }
+
+  // --- couleur intensité -> rgb (noir->vert->jaune->rouge) ---
+  function heat(n){
+    n=Math.max(0,Math.min(1,n));
+    let r,g,b;
+    if(n<0.5){const t=n/0.5; r=Math.round(20*t); g=Math.round(40+180*t); b=Math.round(60*(1-t)+30);}
+    else{const t=(n-0.5)/0.5; r=Math.round(20+235*t); g=Math.round(220-180*t); b=Math.round(30*(1-t));}
+    return [r,g,b];
+  }
+
+  // --- détection de mouvement (accéléromètre) : garde-fou anti-fausse-alarme ---
+  function onAccel(ax,ay,az){
+    if(ax==null)return;
+    if(lastAcc){
+      const d=Math.abs(ax-lastAcc[0])+Math.abs(ay-lastAcc[1])+Math.abs(az-lastAcc[2]);
+      if(d>0.6){moving=true;lastMoveT=performance.now();}
+      else if(performance.now()-lastMoveT>300){moving=false;}
+    }
+    lastAcc=[ax,ay,az];
+  }
+
+  // --- lecture capteur ---
+  function onReading(x,y,z){
+    if(x==null)return;
+    // 1) filtre médian anti-pics sur chaque composante brute
+    const fx=pushMed(medX,x),fy=pushMed(medY,y),fz=pushMed(medZ,z);
+
+    if(calibrating){
+      const t=performance.now();
+      if(calPhase===1){                       // phase « 8 » : balayer les orientations pour estimer le hard-iron
+        if(fx<calMin.x)calMin.x=fx; if(fx>calMax.x)calMax.x=fx;
+        if(fy<calMin.y)calMin.y=fy; if(fy>calMax.y)calMax.y=fy;
+        if(fz<calMin.z)calMin.z=fz; if(fz>calMax.z)calMax.z=fz;
+        const sec=Math.max(0,Math.ceil((CAL8_MS-(t-calStart))/1000));
+        if(sec!==lastCalSec){lastCalSec=sec;calSubEl.textContent=sec+' s';}
+        if(t-calStart>=CAL8_MS){
+          // centre de la sphère = offset hard-iron ; validé seulement si la couverture est suffisante
+          const rx=calMax.x-calMin.x,ry=calMax.y-calMin.y,rz=calMax.z-calMin.z;
+          hardIron=(rx>HARDIRON_MIN&&ry>HARDIRON_MIN&&rz>HARDIRON_MIN)
+            ?{x:(calMin.x+calMax.x)/2,y:(calMin.y+calMax.y)/2,z:(calMin.z+calMax.z)/2}
+            :{x:0,y:0,z:0};                    // repli : pas assez de mouvement → magnitude brute
+          calPhase=2;calStart=t;calSamples.length=0;
+          calTxtEl.textContent='Immobilise le téléphone';calSubEl.textContent='presque fini';
+        }
+        return;
+      }
+      // phase 2 : capture du vecteur corrigé au repos (référence de détection)
+      calSamples.push([fx-hardIron.x,fy-hardIron.y,fz-hardIron.z]);
+      if(t-calStart>=CALHOLD_MS){
+        const n=calSamples.length||1;
+        baseline=calSamples.reduce((a,s)=>({x:a.x+s[0],y:a.y+s[1],z:a.z+s[2]}),{x:0,y:0,z:0});
+        baseline.x/=n;baseline.y/=n;baseline.z/=n;
+        calibrating=false;calPhase=0;setState('live');calBannerHide();
+      }
+      return;
+    }
+    if(!baseline){baseline={x:fx-hardIron.x,y:fy-hardIron.y,z:fz-hardIron.z};return;}
+
+    // 2) détection INVARIANTE À LA ROTATION : on corrige le hard-iron, puis on compare les magnitudes |B|.
+    //    Champ terrestre de magnitude constante → tourner le téléphone ne déclenche rien.
+    const cx=fx-hardIron.x,cy=fy-hardIron.y,cz=fz-hardIron.z;
+    const magNow=Math.sqrt(cx*cx+cy*cy+cz*cz);
+    const baseMag=Math.sqrt(baseline.x*baseline.x+baseline.y*baseline.y+baseline.z*baseline.z);
+    const anomaly=Math.abs(magNow-baseMag);
+    smoothed=alpha*smoothed+(1-alpha)*anomaly;
+
+    const full=20/sensitivity;
+    const norm=smoothed<full?smoothed/full:1;
+    const now=performance.now();
+
+    // 3) recalibrage de dérive : quand c'est calme ET immobile, la baseline suit lentement
+    //    le champ ambiant (évite les faux positifs en changeant de pièce)
+    if(anomaly<full*0.25 && !moving){
+      baseline.x+=DRIFT*(cx-baseline.x);
+      baseline.y+=DRIFT*(cy-baseline.y);
+      baseline.z+=DRIFT*(cz-baseline.z);
+    }
+
+    // champ total (μT) — throttlé pour limiter les écritures DOM (~7/s au lieu de 50/s)
+    if(now-lastStatusT>150){statusEl.textContent=magNow.toFixed(0)+' μT';lastStatusT=now;}
+
+    // axe dominant de l'anomalie (informatif) : comparaison sur les carrés, sans racine
+    const dax=cx-baseline.x,day=cy-baseline.y,daz=cz-baseline.z;
+    updateAxis(dax*dax,day*day,daz*daz,norm,now);
+
+    if(mode==='meter'){ if(!hold) renderMeter(smoothed,norm); }
+    else pushScan(norm);
+
+    // retour haptique + audio dans les 2 modes
+    driveAudio(norm);
+    if(haptic&&norm>0.5&&navigator.vibrate){
+      const gap=norm>0.8?90:220;
+      if(now-lastBuzz>gap){navigator.vibrate(norm>0.8?40:18);lastBuzz=now;}
+    }
+  }
+
+  // met à jour l'axe dominant, avec seuil de bruit + hystérésis temporelle anti-scintillement
+  function updateAxis(x2,y2,z2,norm,now){
+    if(norm<0.15){
+      if(shownAxis!=='—'){shownAxis='—';axisValEl.textContent='—';axisValEl.style.color='';axisValEl.style.borderColor='';}
+      return;
+    }
+    const a = x2>y2 ? (x2>z2?'X':'Z') : (y2>z2?'Y':'Z');
+    if(a!==shownAxis && now-lastAxisT>250){
+      shownAxis=a;lastAxisT=now;axisValEl.textContent=a;
+      const c=norm>0.66?'var(--hot)':norm>0.33?'var(--warn)':'var(--live)';
+      axisValEl.style.color=c;axisValEl.style.borderColor=c;
+    }
+  }
+
+  function renderMeter(a,norm){
+    valEl.textContent=a.toFixed(1);
+    gFill.style.strokeDashoffset=CIRC*(1-norm);
+    let col='var(--live)',txt='calme';
+    if(norm>0.66){col='var(--hot)';txt='● MÉTAL';}
+    else if(norm>0.33){col='var(--warn)';txt='proche';}
+    // n'écrire les couleurs/verdict que lorsqu'on change de palier
+    if(col!==lastCol){lastCol=col;gFill.style.stroke=col;valEl.style.color=col;verdictEl.style.color=col;verdictEl.textContent=txt;}
+    hist.push(norm);if(hist.length>240)hist.shift();
+    waveDirty=true;
+  }
+
+  // simple mise en file : le tracé se fait dans la boucle rAF
+  function pushScan(norm){ scanPending.push(norm); }
+
+  // --- boucle wave ---
+  function drawWave(){
+    if(!waveDirty)return; waveDirty=false;   // ne redessine que si le signal a bougé
+    const w=cv.clientWidth,h=cv.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle='rgba(94,107,130,.12)';ctx.lineWidth=1;
+    for(let i=1;i<4;i++){const y=h*i/4;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    if(hist.length>1){
+      ctx.beginPath();
+      for(let i=0;i<hist.length;i++){const x=w*i/239,y=h-hist[i]*h*0.92-2;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+      const last=hist[hist.length-1],c=last>0.66?'#ff5252':last>0.33?'#f2c14e':'#3dd9a3';
+      ctx.strokeStyle=c;ctx.lineWidth=2;ctx.shadowColor=c;ctx.shadowBlur=8;ctx.stroke();ctx.shadowBlur=0;
+    }
+  }
+
+  // --- scan : peinture d'UNE colonne sur le buffer (appelée ~30x/s, pas par frame) ---
+  function paintCol(v){
+    sbx.drawImage(scanBuf,-STEP_D,0);                 // fait défiler l'image d'un cran vers la gauche
+    const x0=sbWd-STEP_D,c=heat(v),rgb=c[0]+','+c[1]+','+c[2],
+          e=(0.25+v*0.5).toFixed(3),m=(0.5+v*0.5).toFixed(3);
+    sbx.fillStyle='#000';sbx.fillRect(x0,0,STEP_D,sbHd);   // efface la colonne dupliquée par le défilement
+    const g=sbx.createLinearGradient(0,0,0,sbHd);          // 1 dégradé par échantillon (≈30/s) vs des milliers/s avant
+    g.addColorStop(0,`rgba(${rgb},${e})`);
+    g.addColorStop(.5,`rgba(${rgb},${m})`);
+    g.addColorStop(1,`rgba(${rgb},${e})`);
+    sbx.fillStyle=g;sbx.fillRect(x0,0,STEP_D,sbHd);
+    scanPainted++;
+    // les épingles suivent le défilement de l'image
+    for(let k=marks.length-1;k>=0;k--){marks[k]-=STEP_D;if(marks[k]<0)marks.splice(k,1);}
+  }
+
+  // épingles numérotées par-dessus l'image scan (coordonnées device)
+  function drawMarks(){
+    if(!marks.length)return;
+    const d=scanDpr,lw=2*d,bw=18*d,bh=16*d,by=4*d;
+    sctx.font=(12*d)+'px monospace';sctx.textAlign='center';sctx.textBaseline='middle';sctx.lineWidth=d;
+    for(let i=0;i<marks.length;i++){
+      const x=marks[i];
+      sctx.fillStyle='rgba(200,224,255,.92)';sctx.fillRect(x-lw/2,0,lw,sbHd);
+      sctx.fillStyle='#0a0e14';sctx.fillRect(x-bw/2,by,bw,bh);
+      sctx.strokeStyle='rgba(200,224,255,.92)';sctx.strokeRect(x-bw/2,by,bw,bh);
+      sctx.fillStyle='#cfe4ff';sctx.fillText(i+1,x,by+bh/2);
+    }
+  }
+
+  // --- boucle scan : ne redessine que si l'image ou les épingles ont changé ---
+  function drawScan(){
+    if(scanPending.length){
+      for(let i=0;i<scanPending.length;i++)paintCol(scanPending[i]);
+      scanPending.length=0;scanDirty=true;
+    }
+    if(!scanDirty)return;                              // sinon le canvas conserve son image
+    scanDirty=false;
+    sctx.setTransform(1,0,0,1,0,0);sctx.drawImage(scanBuf,0,0);  // blit buffer -> visible, 1:1
+    drawMarks();
+    if(scanPainted>8)scanHintEl.style.display='none';
+  }
+
+  function loop(){
+    if(mode==='meter') drawWave();
+    else drawScan();
+    requestAnimationFrame(loop);
+  }
+
+  // --- accéléromètre (facultatif) : sert uniquement à détecter le mouvement ---
+  function startAccel(){
+    try{
+      if(!('Accelerometer' in window))return;
+      accel=new Accelerometer({frequency:20});
+      accel.addEventListener('reading',()=>onAccel(accel.x,accel.y,accel.z));
+      accel.addEventListener('error',()=>{});   // non bloquant : l'app marche sans
+      accel.start();
+    }catch(e){}
+  }
+
+  // ===================== MODE BOUSSOLE (fallback sans magnétomètre brut) =====================
+  // moyenne circulaire d'angles (gère le passage 359°→0°)
+  function circMean(a){let s=0,c=0;for(let i=0;i<a.length;i++){const r=a[i]*Math.PI/180;s+=Math.sin(r);c+=Math.cos(r);}
+    return (Math.atan2(s,c)*180/Math.PI+360)%360;}
+
+  // gyroscope : mesure la rotation physique pour distinguer « j'ai tourné » de « métal détecté »
+  function startGyro(){
+    try{
+      if(!('Gyroscope' in window))return;
+      gyro=new Gyroscope({frequency:30});
+      gyro.addEventListener('reading',()=>{
+        rotRate=Math.hypot(gyro.x||0,gyro.y||0,gyro.z||0);   // rad/s
+        if(rotRate>0.15){moving=true;lastMoveT=performance.now();}
+        else if(performance.now()-lastMoveT>300){moving=false;}
+      });
+      gyro.addEventListener('error',()=>{});
+      gyro.start();
+    }catch(e){}
+  }
+
+  // traitement d'une lecture de cap (boussole absolue)
+  function onOrient(e){
+    const hdg=e.alpha;
+    if(hdg==null)return;
+    const t=performance.now();
+    if(calibrating){
+      calSamples.push(hdg);
+      if(t-calStart>=CALHOLD_MS){baseAlpha=circMean(calSamples);calibrating=false;calPhase=0;setState('live');calBannerHide();}
+      return;
+    }
+    if(baseAlpha==null){baseAlpha=hdg;return;}
+    let d=((hdg-baseAlpha+540)%360)-180;        // écart de cap signé, plus court chemin (-180..180)
+    let anomaly;
+    if(moving){                                  // rotation physique : cap faussé par le mouvement → on ignore
+      baseAlpha=(baseAlpha+0.35*d+360)%360;
+      anomaly=0;
+    }else{
+      const mag=Math.abs(d);
+      anomaly = mag>ODEAD ? mag-ODEAD : 0;       // zone morte : on jette le bruit de boussole (< ODEAD°)
+      baseAlpha=(baseAlpha+ODRIFT*d+360)%360;    // recalage PERMANENT (jamais figé) → absorbe la dérive lente
+    }
+    smoothed=alpha*smoothed+(1-alpha)*anomaly;
+    const full=40/sensitivity;                   // pleine échelle plus large : le bruit de fond reste vert
+    const norm=smoothed<full?smoothed/full:1;
+    if(t-lastStatusT>150){statusEl.textContent=Math.round(hdg)+'° · boussole';lastStatusT=t;}
+    if(shownAxis!=='—'){shownAxis='—';axisValEl.textContent='—';axisValEl.style.color='';axisValEl.style.borderColor='';}
+    if(mode==='meter'){ if(!hold) renderMeter(smoothed,norm); }
+    else pushScan(norm);
+    driveAudio(norm);
+    if(haptic&&norm>0.5&&navigator.vibrate){
+      const gap=norm>0.8?90:220;
+      if(t-lastBuzz>gap){navigator.vibrate(norm>0.8?40:18);lastBuzz=t;}
+    }
+  }
+
+  // démarre le mode boussole : boote seulement quand un vrai cap arrive
+  function startOrient(){
+    startGyro();
+    let got=false;
+    orientEvt=('ondeviceorientationabsolute' in window)?'deviceorientationabsolute':'deviceorientation';
+    orientHandler=e=>{ if(e.alpha==null)return; if(!got){got=true;boot();} onOrient(e); };
+    window.addEventListener(orientEvt,orientHandler);
+    setTimeout(()=>{ if(!got){window.removeEventListener(orientEvt,orientHandler);
+      showErr("Le capteur d'orientation ne renvoie pas de cap.\n\n"+caps());} },2500);
+  }
+
+  // rapport de capacités du navigateur/téléphone (pour diagnostic)
+  function caps(){
+    const has=n=>(n in window)?'oui':'NON';
+    const m=navigator.userAgent.match(/Chrome\/([\d.]+)/);
+    return "— DIAGNOSTIC —\n"
+      +"Chrome : "+(m?m[1]:'?')+"\n"
+      +"HTTPS : "+(isSecureContext?'oui':'NON')+"\n"
+      +"Magnetometer : "+has('Magnetometer')+"\n"
+      +"Accelerometer : "+has('Accelerometer')+"\n"
+      +"Gyroscope : "+has('Gyroscope')+"\n"
+      +"AbsoluteOrientationSensor : "+has('AbsoluteOrientationSensor')+"\n"
+      +"DeviceOrientationEvent : "+has('DeviceOrientationEvent')+"\n"
+      +"orientationabsolute : "+has('ondeviceorientationabsolute');
+  }
+
+  // --- init capteur ---
+  async function start(){
+    // 0) APPLI NATIVE (Capacitor) : magnétomètre brut via plugin natif, aucune restriction navigateur
+    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+      try{
+        nativeMag=Capacitor.registerPlugin('Magneto');
+        await nativeMag.addListener('reading',d=>onReading(d.x,d.y,d.z));
+        await nativeMag.start({frequency:50});
+        sensorMode='mag';
+        boot();return;
+      }catch(e){
+        showErr("Plugin natif indisponible :\n"+(e&&e.message?e.message:e)+"\n\n"+caps());
+        return;
+      }
+    }
+    if('Magnetometer' in window){                       // idéal (web) : magnétomètre brut (μT)
+      try{
+        if(navigator.permissions){try{await navigator.permissions.query({name:'magnetometer'});}catch(e){}}
+        sensor=new Magnetometer({frequency:50});
+        sensor.addEventListener('reading',()=>onReading(sensor.x,sensor.y,sensor.z));
+        sensor.addEventListener('error',ev=>showErr(
+          ev.error&&ev.error.name==='NotAllowedError'
+          ?"Permission capteur refusée. Autorise-la dans les réglages du navigateur."
+          :"Capteur en erreur : "+(ev.error?(ev.error.name+' — '+ev.error.message):'inconnu')));
+        sensor.start();
+        sensorMode='mag';
+        startAccel();   // garde-fou mouvement (facultatif, silencieux si absent)
+        boot();return;
+      }catch(e){
+        showErr("Magnétomètre présent mais refusé au démarrage :\n"+e.name+" — "+e.message+"\n\n"+caps());
+        return;
+      }
+    }
+    // fallback : boussole absolue (dérivée du magnétomètre) — Chrome récent sans magnétomètre brut
+    if(('ondeviceorientationabsolute' in window) || ('DeviceOrientationEvent' in window)){
+      sensorMode='orient';
+      startOrient();
+      return;
+    }
+    showErr("Aucun capteur magnétique accessible.\n\n"+caps());
+  }
+  function boot(){el('gate').classList.add('hidden');running=true;
+    el('unit').textContent = sensorMode==='orient' ? 'DÉVIATION °' : 'ANOMALIE μT';
+    sizeCanvas(cv);sizeScan();startCalibration();loop();}
+  function showErr(m){const e=el('gateErr');e.textContent=m;e.classList.remove('hidden');}
+
+  // --- tuto affiché une seule fois ---
+  const tutoEl=el('tuto');
+  let tutoSeen=false;try{tutoSeen=!!localStorage.getItem('ferro.seen');}catch(e){}
+  if(tutoSeen)tutoEl.classList.add('hidden');
+  el('tutoBtn').onclick=()=>{try{localStorage.setItem('ferro.seen','1');}catch(e){}tutoEl.classList.add('hidden');};
+
+  el('startBtn').onclick=()=>{if(audioOn)initAudio();start();};
+  addEventListener('resize',()=>{if(running){sizeCanvas(cv);sizeScan();}});
+
+  // économie batterie : couper le capteur hors écran, le relancer au retour
+  document.addEventListener('visibilitychange',()=>{
+    if(!running)return;
+    if(document.hidden){
+      try{if(sensor)sensor.stop();}catch(e){} try{if(accel)accel.stop();}catch(e){} try{if(gyro)gyro.stop();}catch(e){}
+      try{if(nativeMag)nativeMag.stop();}catch(e){}
+      stopAudio();setState('pause');statusEl.textContent='EN PAUSE';
+    }else{
+      try{if(sensor)sensor.start();}catch(e){} try{if(accel)accel.start();}catch(e){} try{if(gyro)gyro.start();}catch(e){}
+      try{if(nativeMag)nativeMag.start({frequency:50});}catch(e){}
+      moving=false;lastAcc=null;baseAlpha=null;startCalibration();   // remet l'état 'cal'
+    }
+  });
+})();
+</script>
+</body>
+</html>
