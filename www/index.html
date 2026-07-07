@@ -347,10 +347,10 @@
   // --- couleur intensité -> rgb (noir->vert->jaune->rouge) ---
   function heat(n){
     n=Math.max(0,Math.min(1,n));
-    let r,g,b;
-    if(n<0.5){const t=n/0.5; r=Math.round(20*t); g=Math.round(40+180*t); b=Math.round(60*(1-t)+30);}
-    else{const t=(n-0.5)/0.5; r=Math.round(20+235*t); g=Math.round(220-180*t); b=Math.round(30*(1-t));}
-    return [r,g,b];
+    // fond NOIR au repos → ROUGE à la détection (un soupçon d'orange tout en haut)
+    const r=Math.round(255*Math.min(1,n*1.25));
+    const g=Math.round(90*Math.max(0,(n-0.65))/0.35);
+    return [r,g,0];
   }
 
   // --- détection de mouvement (accéléromètre) : garde-fou anti-fausse-alarme ---
