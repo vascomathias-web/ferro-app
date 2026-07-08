@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- corps du U (aimant, vert) -->
+    <path
+        android:pathData="M38,42 L38,56 A16,16 0 0 1 70,56 L70,42"
+        android:strokeColor="#3dd9a3"
+        android:strokeWidth="13"
+        android:fillColor="#00000000"/>
+    <!-- pôle gauche (rouge) -->
+    <path
+        android:pathData="M38,32 L38,42"
+        android:strokeColor="#ff5252"
+        android:strokeWidth="13"
+        android:fillColor="#00000000"/>
+    <!-- pôle droit (clair) -->
+    <path
+        android:pathData="M70,32 L70,42"
+        android:strokeColor="#c8d4e4"
+        android:strokeWidth="13"
+        android:fillColor="#00000000"/>
+</vector>
