@@ -3,22 +3,22 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- corps du U (aimant, vert) -->
+    <!-- piste de la jauge (gris sombre) -->
     <path
-        android:pathData="M38,42 L38,56 A16,16 0 0 1 70,56 L70,42"
-        android:strokeColor="#3dd9a3"
-        android:strokeWidth="13"
+        android:pathData="M35.6,72.4 A26,26 0 1 1 72.4,72.4"
+        android:strokeColor="#1E2A3A"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
         android:fillColor="#00000000"/>
-    <!-- pôle gauche (rouge) -->
+    <!-- arc actif (vert) -->
     <path
-        android:pathData="M38,32 L38,42"
-        android:strokeColor="#ff5252"
-        android:strokeWidth="13"
+        android:pathData="M35.6,72.4 A26,26 0 0 1 54,28"
+        android:strokeColor="#3DD9A3"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
         android:fillColor="#00000000"/>
-    <!-- pôle droit (clair) -->
+    <!-- point au bout de l'arc -->
     <path
-        android:pathData="M70,32 L70,42"
-        android:strokeColor="#c8d4e4"
-        android:strokeWidth="13"
-        android:fillColor="#00000000"/>
+        android:pathData="M48,28 A6,6 0 1 0 60,28 A6,6 0 1 0 48,28 Z"
+        android:fillColor="#3DD9A3"/>
 </vector>
