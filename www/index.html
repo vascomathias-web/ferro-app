@@ -377,6 +377,12 @@
     gain.gain.exponentialRampToValueAtTime(0.0001,t+dur);  // enveloppe percussive du bip
   }
 
+  // vibration : natif dans l'app (navigator.vibrate ne marche pas dans un WebView), repli web sinon
+  function buzz(ms){
+    if(nativeMag&&nativeMag.vibrate){try{nativeMag.vibrate({ms});}catch(e){}return;}
+    if(navigator.vibrate)navigator.vibrate(ms);
+  }
+
   function calBannerShow(t){calBannerEl.classList.remove('hidden');calTxtEl.textContent=t;calSubEl.textContent='4 s';}
   function calBannerHide(){calBannerEl.classList.add('hidden');}
 
@@ -481,9 +487,9 @@
 
     // retour haptique + audio dans les 2 modes
     driveAudio(norm);
-    if(haptic&&norm>0.5&&navigator.vibrate){
+    if(haptic&&norm>0.5){
       const gap=norm>0.8?90:220;
-      if(now-lastBuzz>gap){navigator.vibrate(norm>0.8?40:18);lastBuzz=now;}
+      if(now-lastBuzz>gap){buzz(norm>0.8?40:18);lastBuzz=now;}
     }
   }
 
@@ -687,9 +693,9 @@
     if(mode==='meter'){ if(!hold) renderMeter(smoothed,norm); }
     else pushScan(norm);
     driveAudio(norm);
-    if(haptic&&norm>0.5&&navigator.vibrate){
+    if(haptic&&norm>0.5){
       const gap=norm>0.8?90:220;
-      if(t-lastBuzz>gap){navigator.vibrate(norm>0.8?40:18);lastBuzz=t;}
+      if(t-lastBuzz>gap){buzz(norm>0.8?40:18);lastBuzz=t;}
     }
   }
 

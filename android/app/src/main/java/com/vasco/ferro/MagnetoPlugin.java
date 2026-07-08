@@ -5,6 +5,10 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Build;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -56,6 +60,26 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
     public void stop(PluginCall call) {
         if (sm != null) {
             sm.unregisterListener(this);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void vibrate(PluginCall call) {
+        int ms = call.getInt("ms", 30);
+        Vibrator v;
+        if (Build.VERSION.SDK_INT >= 31) {
+            VibratorManager vm = (VibratorManager) getContext().getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            v = (vm != null) ? vm.getDefaultVibrator() : null;
+        } else {
+            v = (Vibrator) getContext().getSystemService(Context.VIBRATOR_SERVICE);
+        }
+        if (v != null && v.hasVibrator()) {
+            if (Build.VERSION.SDK_INT >= 26) {
+                v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                v.vibrate(ms);
+            }
         }
         call.resolve();
     }
