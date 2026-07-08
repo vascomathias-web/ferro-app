@@ -35,6 +35,21 @@
   .axis b{min-width:14px;text-align:center;font-size:13px;letter-spacing:0;color:var(--text);
     padding:2px 8px;border:1px solid var(--line);border-radius:6px;transition:color .2s,border-color .2s}
 
+  /* guide « tu chauffes / refroidis » */
+  .trend{margin-top:9px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);
+    min-height:15px;transition:color .2s}
+
+  /* réticule : marque la position du capteur sur le téléphone (déplaçable, mémorisé) */
+  .reticle{position:fixed;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:15;
+    touch-action:none;cursor:move}
+  .reticle::before,.reticle::after{content:'';position:absolute;background:rgba(61,217,163,.55)}
+  .reticle::before{left:50%;top:0;width:1px;height:100%;transform:translateX(-.5px)}
+  .reticle::after{top:50%;left:0;height:1px;width:100%;transform:translateY(-.5px)}
+  .reticle i{position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;
+    border:1px solid rgba(61,217,163,.75);border-radius:50%}
+  .reticle span{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;
+    font-size:8px;letter-spacing:1px;color:var(--live);white-space:nowrap;text-transform:uppercase;opacity:.8}
+
   /* onglets */
   .tabs{display:flex;gap:8px;padding:4px 16px 10px}
   .tab{flex:1;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;
@@ -167,6 +182,7 @@
         <div class="unit" id="unit">ANOMALIE μT</div>
         <div class="verdict" id="verdict">calibrage…</div>
         <div class="axis" id="axis"><em>AXE</em><b id="axisVal">—</b></div>
+        <div class="trend" id="trend"></div>
       </div>
     </div>
   </div>
@@ -184,6 +200,9 @@
     <div class="scanScale"><span>◀ départ</span><span>maintenant ▶</span></div>
   </div>
 </div>
+
+<!-- ===== RÉTICULE CAPTEUR (déplaçable) ===== -->
+<div class="reticle hidden" id="reticle"><i></i><span>capteur</span></div>
 
 <!-- ===== BANNIÈRE CALIBRATION ===== -->
 <div class="calBanner hidden" id="calBanner">
@@ -244,8 +263,11 @@
   let scanPending=[], scanPainted=0, sbWd=0, sbHd=0, STEP_D=2;
   let marks=[], scanDirty=false, scanDpr=1;   // épingles (px device), drapeau de redraw, dpr courant
 
+  // guide de proximité « tu chauffes »
+  let peakN=0, trendPrevN=0, lastTrendT=0;
+
   const valEl=el('val'),verdictEl=el('verdict'),statusEl=el('statusTxt'),gFill=el('gFill'),
-        dot=el('dot'),axisValEl=el('axisVal'),scanHintEl=el('scanHint'),
+        dot=el('dot'),axisValEl=el('axisVal'),scanHintEl=el('scanHint'),trendEl=el('trend'),reticleEl=el('reticle'),
         calBannerEl=el('calBanner'),calTxtEl=el('calTxt'),calSubEl=el('calSub'),
         sensR=el('sens'),smoothR=el('smooth'),sensVal=el('sensVal'),smoothVal=el('smoothVal');
 
@@ -463,6 +485,23 @@
     if(col!==lastCol){lastCol=col;gFill.style.stroke=col;valEl.style.color=col;verdictEl.style.color=col;verdictEl.textContent=txt;}
     hist.push(norm);if(hist.length>240)hist.shift();
     waveDirty=true;
+    updateTrend(norm);
+  }
+
+  // guide « tu chauffes / refroidis » : indique si on s'approche ou s'éloigne du pic
+  function updateTrend(norm){
+    if(norm>peakN)peakN=norm; else peakN*=0.99;         // pic qui redescend lentement (mémoire courte)
+    const now=performance.now();
+    if(now-lastTrendT<180)return;                       // maj ~5x/s
+    const d=norm-trendPrevN; trendPrevN=norm; lastTrendT=now;
+    let t,c;
+    const prox = peakN>0.15 ? norm/peakN : 0;
+    if(norm<0.15){ t='balaie lentement'; c='var(--dim)'; }
+    else if(prox>0.9){ t='● tu y es'; c='var(--hot)'; }
+    else if(d>0.03){ t='↑ tu chauffes'; c='var(--warn)'; }
+    else if(d<-0.03){ t='↓ tu refroidis'; c='var(--dim)'; }
+    else { t='· stable'; c='var(--dim)'; }
+    if(t!==trendEl.textContent){trendEl.textContent=t;trendEl.style.color=c;}
   }
 
   // simple mise en file : le tracé se fait dans la boucle rAF
@@ -669,8 +708,22 @@
   }
   function boot(){el('gate').classList.add('hidden');running=true;
     el('unit').textContent = sensorMode==='orient' ? 'DÉVIATION °' : 'ANOMALIE μT';
+    reticleEl.classList.remove('hidden');
     sizeCanvas(cv);sizeScan();startCalibration();loop();}
   function showErr(m){const e=el('gateErr');e.textContent=m;e.classList.remove('hidden');}
+
+  // --- réticule capteur : position mémorisée, déplaçable au doigt ---
+  let rpos={x:50,y:14};
+  try{const s=JSON.parse(localStorage.getItem('ferro.reticle')||'null');if(s&&s.x!=null)rpos=s;}catch(e){}
+  function applyReticle(){reticleEl.style.left=rpos.x+'%';reticleEl.style.top=rpos.y+'%';}
+  applyReticle();
+  let rdrag=false;
+  reticleEl.addEventListener('pointerdown',e=>{rdrag=true;reticleEl.setPointerCapture(e.pointerId);e.preventDefault();});
+  reticleEl.addEventListener('pointermove',e=>{if(!rdrag)return;
+    rpos.x=Math.max(3,Math.min(97,e.clientX/innerWidth*100));
+    rpos.y=Math.max(6,Math.min(94,e.clientY/innerHeight*100));applyReticle();});
+  reticleEl.addEventListener('pointerup',()=>{if(!rdrag)return;rdrag=false;
+    try{localStorage.setItem('ferro.reticle',JSON.stringify(rpos));}catch(e){}});
 
   // --- tuto affiché une seule fois ---
   const tutoEl=el('tuto');
