@@ -249,7 +249,10 @@
   let baseline=null, smoothed=0;
   let haptic=true, audioOn=false;
   let calibrating=false, calSamples=[], calStart=0;
-  let audioCtx=null, osc=null, gain=null, lastBuzz=0;
+  let audioCtx=null, osc=null, gain=null, lastBuzz=0, lastBeepT=0;
+  // auto-épinglage des pics (mode scan)
+  let apActive=false, apMax=0, apMaxAge=0, apCool=0;
+  const AP_THRESH=0.55, AP_DROP=0.18, AP_COOL=25;
   let sensitivity=5, alpha=0.30;
   // état d'affichage (mis à jour seulement au changement, pour éviter le churn DOM)
   let dotState='', shownAxis='', lastAxisT=0, lastStatusT=0, waveDirty=false, lastCol='';
@@ -301,6 +304,7 @@
     sc.width=sbWd;sc.height=sbHd;scanBuf.width=sbWd;scanBuf.height=sbHd;
     sbx.fillStyle='#000';sbx.fillRect(0,0,sbWd,sbHd);
     STEP_D=Math.max(1,Math.round(2*dpr));scanDpr=dpr;scanPending.length=0;marks.length=0;scanDirty=true;
+    apActive=false;apMax=0;apMaxAge=0;apCool=0;
   }
 
   // --- persistance des réglages ---
@@ -356,8 +360,22 @@
     if(audioCtx.state==='suspended')audioCtx.resume();
     osc=audioCtx.createOscillator();gain=audioCtx.createGain();osc.type='sine';gain.gain.value=0;
     osc.connect(gain);gain.connect(audioCtx.destination);osc.start();}catch(e){}}
-  function stopAudio(){if(gain)gain.gain.value=0;}
-  function driveAudio(n){if(!audioOn||!osc)return;osc.frequency.value=220+n*900;gain.gain.value=Math.min(0.12,n*0.14);}
+  function stopAudio(){if(gain){try{gain.gain.cancelScheduledValues(audioCtx.currentTime);}catch(e){}gain.gain.value=0;}}
+  // son type détecteur : des bips dont la cadence ET la hauteur montent avec le signal
+  function driveAudio(n){
+    if(!audioOn||!osc)return;
+    if(n<0.08){gain.gain.value=0;return;}                 // silence au repos
+    const now=performance.now();
+    const rate=2+n*13;                                    // 2 bips/s (faible) → 15 bips/s (fort)
+    const interval=1000/rate;
+    if(now-lastBeepT<interval)return;
+    lastBeepT=now;
+    const t=audioCtx.currentTime, pitch=300+n*1100, dur=Math.min(interval*0.6,70)/1000;
+    osc.frequency.setValueAtTime(pitch,t);
+    gain.gain.cancelScheduledValues(t);
+    gain.gain.setValueAtTime(Math.min(0.16,0.05+n*0.16),t);
+    gain.gain.exponentialRampToValueAtTime(0.0001,t+dur);  // enveloppe percussive du bip
+  }
 
   function calBannerShow(t){calBannerEl.classList.remove('hidden');calTxtEl.textContent=t;calSubEl.textContent='4 s';}
   function calBannerHide(){calBannerEl.classList.add('hidden');}
@@ -528,7 +546,22 @@
   }
 
   // simple mise en file : le tracé se fait dans la boucle rAF
-  function pushScan(norm){ scanPending.push(norm); }
+  function pushScan(norm){ scanPending.push(norm); autoPin(norm); }
+
+  // auto-épinglage : pose une épingle toute seule quand on vient de passer un pic
+  function autoPin(norm){
+    if(apCool>0)apCool--;
+    if(norm>=AP_THRESH){ apActive=true; if(norm>apMax){apMax=norm;apMaxAge=0;} else apMaxAge++; }
+    else if(norm<AP_THRESH*0.6){ apActive=false;apMax=0;apMaxAge=0; }
+    else if(apActive){ apMaxAge++; }
+    // le signal redescend après un pic → on épingle à la position du max (compensée du défilement)
+    if(apActive && apMax>0 && norm<apMax-AP_DROP && apCool===0){
+      const x=(sbWd-STEP_D)-apMaxAge*STEP_D;
+      let near=false; for(let i=0;i<marks.length;i++){ if(Math.abs(marks[i]-x)<22*scanDpr){near=true;break;} }
+      if(x>0 && !near){ marks.push(x); scanDirty=true; }
+      apCool=AP_COOL; apActive=false; apMax=0; apMaxAge=0;
+    }
+  }
 
   // --- boucle wave ---
   function drawWave(){
