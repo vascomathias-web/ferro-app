@@ -1,6 +1,7 @@
 package com.vasco.ferro;
 
 import android.content.Context;
+import android.content.Intent;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -81,6 +82,15 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
                 v.vibrate(ms);
             }
         }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void openArTest(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            Intent i = new Intent(getActivity(), ArTestActivity.class);
+            getActivity().startActivity(i);
+        });
         call.resolve();
     }
 

@@ -161,6 +161,7 @@
   <h1>FER<b>RO</b></h1>
   <p>Détecteur de masses métalliques par magnétomètre. Deux modes : jauge de proximité, et scan qui dessine les montants en balayant le mur.</p>
   <button class="primary go" id="startBtn">Démarrer le capteur</button>
+  <button class="go hidden" id="arBtn" style="max-width:260px;font-size:10px;color:var(--dim)">Test AR (prototype)</button>
   <div class="err hidden" id="gateErr"></div>
 </div>
 
@@ -794,6 +795,13 @@
   el('tutoBtn').onclick=()=>{try{localStorage.setItem('ferro.seen','1');}catch(e){}tutoEl.classList.add('hidden');};
 
   el('startBtn').onclick=()=>{if(audioOn)initAudio();start();};
+
+  // bouton prototype AR : visible uniquement dans l'app native
+  if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+    const arBtn=el('arBtn');
+    arBtn.classList.remove('hidden');
+    arBtn.onclick=()=>{try{(Capacitor.Plugins.Magneto).openArTest();}catch(e){showErr('AR : '+(e&&e.message?e.message:e));}};
+  }
   addEventListener('resize',()=>{if(running){sizeCanvas(cv);sizeScan();}});
 
   // économie batterie : couper le capteur hors écran, le relancer au retour
