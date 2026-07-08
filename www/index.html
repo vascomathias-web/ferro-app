@@ -39,6 +39,12 @@
   .trend{margin-top:9px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);
     min-height:15px;transition:color .2s}
 
+  /* point directionnel qui glisse sur le cercle (indique d'où vient le métal) */
+  .dirDot{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;
+    background:currentColor;color:var(--live);opacity:0;pointer-events:none;z-index:3;
+    box-shadow:0 0 12px currentColor,0 0 4px currentColor;
+    transition:transform .08s linear,opacity .2s,width .1s,height .1s,margin .1s}
+
   /* réticule : marque la position du capteur sur le téléphone (déplaçable, mémorisé) */
   .reticle{position:fixed;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:15;
     touch-action:none;cursor:move}
@@ -171,12 +177,13 @@
 <!-- ===== MODE JAUGE ===== -->
 <div class="screen active" id="meter">
   <div class="stage">
-    <div class="dial">
+    <div class="dial" id="dial">
       <div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>
       <svg class="gauge" viewBox="0 0 200 200">
         <circle class="track" cx="100" cy="100" r="92"></circle>
         <circle class="fill" id="gFill" cx="100" cy="100" r="92"></circle>
       </svg>
+      <div class="dirDot" id="dirDot"></div>
       <div class="readout">
         <div class="value" id="val">0.0</div>
         <div class="unit" id="unit">ANOMALIE μT</div>
@@ -268,6 +275,7 @@
 
   const valEl=el('val'),verdictEl=el('verdict'),statusEl=el('statusTxt'),gFill=el('gFill'),
         dot=el('dot'),axisValEl=el('axisVal'),scanHintEl=el('scanHint'),trendEl=el('trend'),reticleEl=el('reticle'),
+        dirDotEl=el('dirDot'),dialEl=el('dial'),
         calBannerEl=el('calBanner'),calTxtEl=el('calTxt'),calSubEl=el('calSub'),
         sensR=el('sens'),smoothR=el('smooth'),sensVal=el('sensVal'),smoothVal=el('smoothVal');
 
@@ -450,7 +458,7 @@
     const dax=cx-baseline.x,day=cy-baseline.y,daz=cz-baseline.z;
     updateAxis(dax*dax,day*day,daz*daz,norm,now);
 
-    if(mode==='meter'){ if(!hold) renderMeter(smoothed,norm); }
+    if(mode==='meter'){ if(!hold){ renderMeter(smoothed,norm); updateDirDot(dax,day,norm); } }
     else pushScan(norm);
 
     // retour haptique + audio dans les 2 modes
@@ -486,6 +494,21 @@
     hist.push(norm);if(hist.length>240)hist.shift();
     waveDirty=true;
     updateTrend(norm);
+  }
+
+  // point directionnel : glisse sur le cercle selon la direction de l'anomalie (dx,dy)
+  function updateDirDot(dax,day,norm){
+    if(norm<0.12){ dirDotEl.style.opacity=0; return; }   // pas de direction fiable au repos
+    const h=Math.hypot(dax,day);
+    if(h<1e-3){ dirDotEl.style.opacity=0; return; }
+    const R=(dialEl.clientWidth/2)*0.92;                  // rayon du cercle en px
+    const x=R*dax/h, y=R*(-day)/h;                        // +y du tel = haut de l'écran (-y pixels)
+    const s=12+norm*10;
+    dirDotEl.style.transform='translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px)';
+    dirDotEl.style.width=dirDotEl.style.height=s.toFixed(0)+'px';
+    dirDotEl.style.margin=(-s/2).toFixed(0)+'px 0 0 '+(-s/2).toFixed(0)+'px';
+    dirDotEl.style.color = norm>0.66?'var(--hot)':norm>0.33?'var(--warn)':'var(--live)';
+    dirDotEl.style.opacity=Math.min(1,0.35+norm);
   }
 
   // guide « tu chauffes / refroidis » : indique si on s'approche ou s'éloigne du pic
