@@ -3,6 +3,7 @@ package com.vasco.ferro;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
@@ -129,6 +130,12 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
         int[] t = new int[1];
         GLES20.glGenTextures(1, t, 0);
         textureId = t[0];
+        // ARCore exige une texture EXTERNAL_OES pour l'image caméra
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
     }
 
     @Override
@@ -164,8 +171,9 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
                     ? "✓ le suivi tient"
                     : "✗ suivi perdu — approche/éloigne du mur");
             runOnUiThread(() -> info.setText(sb.toString()));
-        } catch (Exception e) {
-            runOnUiThread(() -> info.setText("Erreur frame :\n" + e.getMessage()));
+        } catch (Throwable e) {
+            final String msg = e.getClass().getSimpleName() + " : " + e.getMessage();
+            runOnUiThread(() -> info.setText("Erreur frame :\n" + msg));
         }
     }
 }
