@@ -25,6 +25,7 @@ import com.google.ar.core.Plane;
 import com.google.ar.core.PointCloud;
 import com.google.ar.core.Session;
 import com.google.ar.core.TrackingState;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -42,6 +43,7 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
     private boolean installRequested = false;
     private int textureId = -1;
     private volatile boolean resumed = false;   // vrai seulement quand la session est réellement reprise
+    private int retries = 0;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -83,6 +85,10 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 1);
             return;
         }
+        startSession();
+    }
+
+    private void startSession() {
         if (session == null) {
             try {
                 switch (ArCoreApk.getInstance().requestInstall(this, !installRequested)) {
@@ -97,7 +103,7 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
                 config.setFocusMode(Config.FocusMode.AUTO);
                 session.configure(config);
             } catch (Exception e) {
-                info.setText("AR indisponible :\n" + e.getMessage());
+                info.setText("AR indisponible :\n" + e.getClass().getSimpleName() + " : " + e.getMessage());
                 return;
             }
         }
@@ -105,9 +111,18 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
             session.resume();
             glView.onResume();
             resumed = true;
+        } catch (CameraNotAvailableException e) {
+            resumed = false;
+            retries++;
+            if (retries <= 8) {
+                info.setText("Caméra pas prête, tentative " + retries + "…");
+                new android.os.Handler(getMainLooper()).postDelayed(this::startSession, 400);
+            } else {
+                info.setText("Caméra indisponible après plusieurs tentatives.\nFerme les autres apps caméra puis rouvre.");
+            }
         } catch (Exception e) {
             session = null;
-            info.setText("Impossible de démarrer la caméra :\n" + e.getMessage());
+            info.setText("Erreur démarrage :\n" + e.getClass().getSimpleName() + " : " + e.getMessage());
         }
     }
 
