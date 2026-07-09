@@ -41,6 +41,7 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
     private Session session;
     private boolean installRequested = false;
     private int textureId = -1;
+    private volatile boolean resumed = false;   // vrai seulement quand la session est réellement reprise
 
     @Override
     protected void onCreate(Bundle b) {
@@ -103,6 +104,7 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
         try {
             session.resume();
             glView.onResume();
+            resumed = true;
         } catch (Exception e) {
             session = null;
             info.setText("Impossible de démarrer la caméra :\n" + e.getMessage());
@@ -112,6 +114,7 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         if (session != null) {
             glView.onPause();
             session.pause();
@@ -147,7 +150,7 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
     @Override
     public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        if (session == null) return;
+        if (session == null || !resumed) return;   // n'interroge la session que si elle est reprise
         try {
             session.setCameraTextureName(textureId);
             Frame frame = session.update();
