@@ -111,18 +111,26 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
             session.resume();
             glView.onResume();
             resumed = true;
-        } catch (CameraNotAvailableException e) {
+        } catch (Exception e) {
             resumed = false;
+            final String type = e.getClass().getSimpleName();
+            closeSession();                       // repart d'une session fraîche à la prochaine tentative
             retries++;
             if (retries <= 8) {
-                info.setText("Caméra pas prête, tentative " + retries + "…");
-                new android.os.Handler(getMainLooper()).postDelayed(this::startSession, 400);
+                info.setText("Démarrage caméra… tentative " + retries + " (" + type + ")");
+                new android.os.Handler(getMainLooper()).postDelayed(this::startSession, 500);
             } else {
-                info.setText("Caméra indisponible après plusieurs tentatives.\nFerme les autres apps caméra puis rouvre.");
+                info.setText("Impossible de démarrer la caméra après plusieurs tentatives.\n"
+                        + "Dernière erreur : " + type
+                        + "\n\nFerme les autres apps caméra, ou redémarre le téléphone, puis rouvre.");
             }
-        } catch (Exception e) {
+        }
+    }
+
+    private void closeSession() {
+        if (session != null) {
+            try { session.close(); } catch (Exception ignored) {}
             session = null;
-            info.setText("Erreur démarrage :\n" + e.getClass().getSimpleName() + " : " + e.getMessage());
         }
     }
 
@@ -134,6 +142,12 @@ public class ArTestActivity extends AppCompatActivity implements GLSurfaceView.R
             glView.onPause();
             session.pause();
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        closeSession();   // libère la caméra pour éviter les sessions « zombies »
+        super.onDestroy();
     }
 
     @Override
