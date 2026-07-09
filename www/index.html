@@ -140,6 +140,16 @@
   @keyframes trace{to{stroke-dashoffset:-32}}
   .calBanner .calTxt{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--text)}
   .calBanner .calSub{font-size:12px;letter-spacing:1px;color:var(--live);font-variant-numeric:tabular-nums}
+
+  /* ---------- MODE PHOTO ---------- */
+  .photoWrap{flex:1;position:relative;margin:0 14px 8px;border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;background:#000;min-height:0}
+  #photoCanvas{width:100%;height:100%;display:block;touch-action:none}
+  .photoHint{position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);text-align:center;
+    font-size:11px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;line-height:1.9;pointer-events:none;padding:0 24px}
+  .photoLevel{position:absolute;top:10px;right:10px;font-size:12px;letter-spacing:1px;padding:5px 10px;border-radius:8px;
+    background:rgba(10,14,20,.72);border:1px solid var(--line);color:var(--dim);pointer-events:none;
+    font-variant-numeric:tabular-nums;transition:color .2s,border-color .2s}
 </style>
 </head>
 <body>
@@ -161,7 +171,6 @@
   <h1>FER<b>RO</b></h1>
   <p>Détecteur de masses métalliques par magnétomètre. Deux modes : jauge de proximité, et scan qui dessine les montants en balayant le mur.</p>
   <button class="primary go" id="startBtn">Démarrer le capteur</button>
-  <button class="go hidden" id="arBtn" style="max-width:260px;font-size:10px;color:var(--dim)">Test AR (prototype)</button>
   <div class="err hidden" id="gateErr"></div>
 </div>
 
@@ -173,6 +182,7 @@
 <div class="tabs">
   <button class="tab active" data-screen="meter" id="tabMeter">Jauge</button>
   <button class="tab" data-screen="scan" id="tabScan">Scan mur</button>
+  <button class="tab" data-screen="photo" id="tabPhoto">Photo</button>
 </div>
 
 <!-- ===== MODE JAUGE ===== -->
@@ -206,6 +216,18 @@
     <canvas id="scanCanvas"></canvas>
     <div class="scanHint" id="scanHint">Balaye lentement · touche un pic pour l'épingler</div>
     <div class="scanScale"><span>◀ départ</span><span>maintenant ▶</span></div>
+  </div>
+</div>
+
+<!-- ===== MODE PHOTO ===== -->
+<div class="screen" id="photo">
+  <div class="photoWrap" id="photoWrap">
+    <canvas id="photoCanvas"></canvas>
+    <div class="photoHint" id="photoHint">Prends une photo du mur,<br>puis balaie : touche la photo là où ça détecte</div>
+    <div class="photoLevel" id="photoLevel">—</div>
+  </div>
+  <div class="btns" style="padding:0 14px 6px">
+    <button class="primary" id="shotBtn">Prendre une photo</button>
   </div>
 </div>
 
@@ -274,6 +296,9 @@
   let scanPending=[], scanPainted=0, sbWd=0, sbHd=0, STEP_D=2;
   let marks=[], scanDirty=false, scanDpr=1;   // épingles (px device), drapeau de redraw, dpr courant
 
+  // mode photo : photo du mur + épingles annotées
+  let photoImg=null, pins=[], pcDpr=1, imgRect={x:0,y:0,w:0,h:0}, lastPhotoLevelT=0;
+
   // guide de proximité « tu chauffes »
   let peakN=0, trendPrevN=0, lastTrendT=0;
 
@@ -291,6 +316,9 @@
   // canvas scan visible + buffer offscreen (blit 1:1, sans scale de contexte)
   const sc=el('scanCanvas'),sctx=sc.getContext('2d');
   const scanBuf=document.createElement('canvas'),sbx=scanBuf.getContext('2d');
+  // canvas photo
+  const pc=el('photoCanvas'),pctx=pc.getContext('2d'),
+        photoHintEl=el('photoHint'),photoLevelEl=el('photoLevel');
 
   function sizeCanvas(c){const r=c.getBoundingClientRect(),dpr=devicePixelRatio||1;
     c.width=r.width*dpr;c.height=r.height*dpr;const cx=c.getContext('2d');cx.setTransform(1,0,0,1,0,0);cx.scale(dpr,dpr);}
@@ -333,8 +361,10 @@
   el('calBtn').onclick=startCalibration;
   el('actionBtn').onclick=e=>{
     if(mode==='scan'){ sizeScan(); scanPainted=0; scanHintEl.style.display='block'; return; }
+    if(mode==='photo'){ savePhoto(); return; }
     hold=!hold;e.target.classList.toggle('on',hold);e.target.textContent=hold?'Held':'Hold';
   };
+  el('shotBtn').onclick=takePhoto;
 
   // onglets
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
@@ -342,9 +372,11 @@
     document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
     el('meter').classList.toggle('active',mode==='meter');
     el('scan').classList.toggle('active',mode==='scan');
+    el('photo').classList.toggle('active',mode==='photo');
     // le bouton d'action change selon le mode
     const ab=el('actionBtn');
     if(mode==='scan'){ ab.textContent='Effacer'; ab.classList.remove('on'); hold=false; setTimeout(sizeScan,30); }
+    else if(mode==='photo'){ ab.textContent='Enregistrer'; ab.classList.remove('on'); hold=false; setTimeout(sizePhoto,30); }
     else ab.textContent=hold?'Held':'Hold';
   });
 
@@ -484,7 +516,8 @@
     updateAxis(dax*dax,day*day,daz*daz,norm,now);
 
     if(mode==='meter'){ if(!hold){ renderMeter(smoothed,norm); updateDirDot(dax,day,norm); } }
-    else pushScan(norm);
+    else if(mode==='scan') pushScan(norm);
+    else updatePhotoLevel(norm);
 
     // retour haptique + audio dans les 2 modes
     driveAudio(norm);
@@ -570,6 +603,83 @@
     }
   }
 
+  // ===================== MODE PHOTO =====================
+  function sizePhoto(){
+    const r=pc.getBoundingClientRect();pcDpr=devicePixelRatio||1;
+    pc.width=Math.max(1,Math.round(r.width*pcDpr));pc.height=Math.max(1,Math.round(r.height*pcDpr));
+    drawPhoto();
+  }
+  function drawPhoto(){
+    const w=pc.width,h=pc.height;
+    pctx.setTransform(1,0,0,1,0,0);pctx.fillStyle='#000';pctx.fillRect(0,0,w,h);
+    if(!photoImg){imgRect={x:0,y:0,w:0,h:0};return;}
+    const s=Math.min(w/photoImg.width,h/photoImg.height);
+    const dw=photoImg.width*s,dh=photoImg.height*s,ox=(w-dw)/2,oy=(h-dh)/2;
+    imgRect={x:ox,y:oy,w:dw,h:dh};
+    pctx.drawImage(photoImg,ox,oy,dw,dh);
+    // épingles (coordonnées normalisées 0..1 relatives à l'image)
+    const d=pcDpr,rr=9*d;
+    pctx.font=(12*d)+'px monospace';pctx.textAlign='center';pctx.textBaseline='middle';pctx.lineWidth=2*d;
+    for(let i=0;i<pins.length;i++){
+      const px=ox+pins[i].x*dw,py=oy+pins[i].y*dh;
+      pctx.beginPath();pctx.arc(px,py,rr,0,7);pctx.fillStyle='rgba(255,82,82,.85)';pctx.fill();
+      pctx.strokeStyle='#fff';pctx.stroke();
+      pctx.fillStyle='#fff';pctx.fillText(i+1,px,py);
+    }
+  }
+  // toucher la photo : pose/enlève une épingle
+  pc.addEventListener('pointerdown',e=>{
+    if(mode!=='photo'||!photoImg)return;
+    const r=pc.getBoundingClientRect();
+    const cx=(e.clientX-r.left)*pcDpr,cy=(e.clientY-r.top)*pcDpr;
+    if(cx<imgRect.x||cx>imgRect.x+imgRect.w||cy<imgRect.y||cy>imgRect.y+imgRect.h)return;
+    const nx=(cx-imgRect.x)/imgRect.w,ny=(cy-imgRect.y)/imgRect.h;
+    const near=14*pcDpr;
+    for(let i=0;i<pins.length;i++){
+      const px=imgRect.x+pins[i].x*imgRect.w,py=imgRect.y+pins[i].y*imgRect.h;
+      if(Math.hypot(px-cx,py-cy)<near){pins.splice(i,1);drawPhoto();return;}
+    }
+    pins.push({x:nx,y:ny});drawPhoto();
+  });
+  // chip de niveau en direct (pour savoir quand épingler)
+  function updatePhotoLevel(norm){
+    const now=performance.now();if(now-lastPhotoLevelT<150)return;lastPhotoLevelT=now;
+    const c=norm>0.66?'var(--hot)':norm>0.33?'var(--warn)':norm>0.12?'var(--live)':'var(--dim)';
+    photoLevelEl.style.color=c;photoLevelEl.style.borderColor=c;
+    photoLevelEl.textContent=norm>0.66?'● MÉTAL':norm>0.33?'proche':norm>0.12?'léger':'—';
+  }
+  // prendre une photo via le plugin caméra natif
+  async function takePhoto(){
+    try{
+      const Cam=Capacitor && Capacitor.Plugins && Capacitor.Plugins.Camera;
+      if(!Cam){statusEl.textContent='caméra indispo';return;}
+      const p=await Cam.getPhoto({quality:80,resultType:'dataUrl',source:'CAMERA',allowEditing:false});
+      const img=new Image();
+      img.onload=()=>{photoImg=img;pins=[];photoHintEl.style.display='none';sizePhoto();};
+      img.src=p.dataUrl;
+    }catch(e){ /* annulé ou refusé : on ignore */ }
+  }
+  // enregistrer la photo annotée dans la galerie
+  async function savePhoto(){
+    if(!photoImg){statusEl.textContent='pas de photo';return;}
+    // rend à la résolution native de l'image + épingles
+    const o=document.createElement('canvas');o.width=photoImg.width;o.height=photoImg.height;
+    const ox2=o.getContext('2d');ox2.drawImage(photoImg,0,0);
+    const rr=Math.max(10,photoImg.width*0.018);
+    ox2.font=(rr*1.2)+'px sans-serif';ox2.textAlign='center';ox2.textBaseline='middle';ox2.lineWidth=Math.max(2,rr*0.25);
+    for(let i=0;i<pins.length;i++){
+      const px=pins[i].x*photoImg.width,py=pins[i].y*photoImg.height;
+      ox2.beginPath();ox2.arc(px,py,rr,0,7);ox2.fillStyle='rgba(255,82,82,.9)';ox2.fill();
+      ox2.strokeStyle='#fff';ox2.stroke();ox2.fillStyle='#fff';ox2.fillText(i+1,px,py);
+    }
+    const data=o.toDataURL('image/jpeg',0.9);
+    try{
+      const M=Capacitor.Plugins.Magneto;
+      await M.saveImage({data});
+      statusEl.textContent='photo enregistrée ✓';
+    }catch(e){ statusEl.textContent='échec enreg. : '+(e&&e.message?e.message:e); }
+  }
+
   // --- boucle wave ---
   function drawWave(){
     if(!waveDirty)return; waveDirty=false;   // ne redessine que si le signal a bougé
@@ -630,7 +740,7 @@
 
   function loop(){
     if(mode==='meter') drawWave();
-    else drawScan();
+    else if(mode==='scan') drawScan();
     requestAnimationFrame(loop);
   }
 
@@ -692,7 +802,8 @@
     if(t-lastStatusT>150){statusEl.textContent=Math.round(hdg)+'° · boussole';lastStatusT=t;}
     if(shownAxis!=='—'){shownAxis='—';axisValEl.textContent='—';axisValEl.style.color='';axisValEl.style.borderColor='';}
     if(mode==='meter'){ if(!hold) renderMeter(smoothed,norm); }
-    else pushScan(norm);
+    else if(mode==='scan') pushScan(norm);
+    else updatePhotoLevel(norm);
     driveAudio(norm);
     if(haptic&&norm>0.5){
       const gap=norm>0.8?90:220;
@@ -795,14 +906,7 @@
   el('tutoBtn').onclick=()=>{try{localStorage.setItem('ferro.seen','1');}catch(e){}tutoEl.classList.add('hidden');};
 
   el('startBtn').onclick=()=>{if(audioOn)initAudio();start();};
-
-  // bouton prototype AR : visible uniquement dans l'app native
-  if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
-    const arBtn=el('arBtn');
-    arBtn.classList.remove('hidden');
-    arBtn.onclick=()=>{try{(Capacitor.Plugins.Magneto).openArTest();}catch(e){showErr('AR : '+(e&&e.message?e.message:e));}};
-  }
-  addEventListener('resize',()=>{if(running){sizeCanvas(cv);sizeScan();}});
+  addEventListener('resize',()=>{if(running){sizeCanvas(cv);sizeScan();if(mode==='photo')sizePhoto();}});
 
   // économie batterie : couper le capteur hors écran, le relancer au retour
   document.addEventListener('visibilitychange',()=>{

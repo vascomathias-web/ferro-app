@@ -1,7 +1,6 @@
 package com.vasco.ferro;
 
 import android.content.Context;
-import android.content.Intent;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -86,12 +85,29 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
     }
 
     @PluginMethod
-    public void openArTest(PluginCall call) {
-        getActivity().runOnUiThread(() -> {
-            Intent i = new Intent(getActivity(), ArTestActivity.class);
-            getActivity().startActivity(i);
-        });
-        call.resolve();
+    public void saveImage(PluginCall call) {
+        String data = call.getString("data");
+        if (data == null) { call.reject("Aucune donnée image"); return; }
+        if (data.contains(",")) data = data.substring(data.indexOf(',') + 1);
+        try {
+            byte[] bytes = android.util.Base64.decode(data, android.util.Base64.DEFAULT);
+            String name = "Ferro_" + System.currentTimeMillis() + ".jpg";
+            android.content.ContentValues cv = new android.content.ContentValues();
+            cv.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name);
+            cv.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+            if (Build.VERSION.SDK_INT >= 29) {
+                cv.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Ferro");
+            }
+            android.content.ContentResolver r = getContext().getContentResolver();
+            android.net.Uri uri = r.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+            if (uri == null) { call.reject("Impossible de créer le fichier"); return; }
+            java.io.OutputStream os = r.openOutputStream(uri);
+            os.write(bytes);
+            os.close();
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : "Erreur d'enregistrement");
+        }
     }
 
     @Override
