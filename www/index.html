@@ -228,6 +228,7 @@
   </div>
   <div class="btns" style="padding:0 14px 6px">
     <button class="primary" id="shotBtn">Prendre une photo</button>
+    <button id="shareBtn" class="hidden">Partager</button>
   </div>
 </div>
 
@@ -372,6 +373,7 @@
     hold=!hold;e.target.classList.toggle('on',hold);e.target.textContent=hold?'Held':'Hold';
   };
   el('shotBtn').onclick=takePhoto;
+  el('shareBtn').onclick=sharePhoto;
 
   // onglets
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
@@ -662,14 +664,13 @@
       if(!Cam){statusEl.textContent='caméra indispo';return;}
       const p=await Cam.getPhoto({quality:80,resultType:'dataUrl',source:'CAMERA',allowEditing:false});
       const img=new Image();
-      img.onload=()=>{photoImg=img;pins=[];photoHintEl.style.display='none';sizePhoto();};
+      img.onload=()=>{photoImg=img;pins=[];photoHintEl.style.display='none';
+        el('shareBtn').classList.remove('hidden');sizePhoto();};
       img.src=p.dataUrl;
     }catch(e){ /* annulé ou refusé : on ignore */ }
   }
-  // enregistrer la photo annotée dans la galerie
-  async function savePhoto(){
-    if(!photoImg){statusEl.textContent='pas de photo';return;}
-    // rend à la résolution native de l'image + épingles
+  // rend la photo + épingles à la résolution native de l'image → dataURL JPEG
+  function renderAnnotatedDataUrl(){
     const o=document.createElement('canvas');o.width=photoImg.width;o.height=photoImg.height;
     const ox2=o.getContext('2d');ox2.drawImage(photoImg,0,0);
     const rr=Math.max(10,photoImg.width*0.018);
@@ -679,12 +680,34 @@
       ox2.beginPath();ox2.arc(px,py,rr,0,7);ox2.fillStyle='rgba(255,82,82,.9)';ox2.fill();
       ox2.strokeStyle='#fff';ox2.stroke();ox2.fillStyle='#fff';ox2.fillText(i+1,px,py);
     }
-    const data=o.toDataURL('image/jpeg',0.9);
+    return o.toDataURL('image/jpeg',0.9);
+  }
+  // enregistrer la photo annotée dans la galerie
+  async function savePhoto(){
+    if(!photoImg){statusEl.textContent='pas de photo';return;}
+    const data=renderAnnotatedDataUrl();
     try{
       const M=Capacitor.Plugins.Magneto;
       await M.saveImage({data});
       statusEl.textContent='photo enregistrée ✓';
     }catch(e){ statusEl.textContent='échec enreg. : '+(e&&e.message?e.message:e); }
+  }
+  // partager la photo annotée via le sélecteur Android (WhatsApp, mail…)
+  async function sharePhoto(){
+    if(!photoImg){statusEl.textContent='pas de photo';return;}
+    const data=renderAnnotatedDataUrl();
+    try{
+      const M=Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Magneto;
+      if(M&&M.shareImage){ await M.shareImage({data}); return; }
+      // repli web (hors app native) : Web Share API avec fichier si dispo
+      const blob=await (await fetch(data)).blob();
+      const file=new File([blob],'ferro-scan.jpg',{type:'image/jpeg'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'Scan Ferro'});
+      }else{ statusEl.textContent='partage indisponible ici'; }
+    }catch(e){ /* annulé ou erreur : on ignore silencieusement les annulations */
+      if(e&&e.name!=='AbortError')statusEl.textContent='échec partage : '+(e.message||e);
+    }
   }
 
   // --- boucle wave ---

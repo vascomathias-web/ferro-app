@@ -110,6 +110,35 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
         }
     }
 
+    @PluginMethod
+    public void shareImage(PluginCall call) {
+        String data = call.getString("data");
+        if (data == null) { call.reject("Aucune donnée image"); return; }
+        if (data.contains(",")) data = data.substring(data.indexOf(',') + 1);
+        try {
+            byte[] bytes = android.util.Base64.decode(data, android.util.Base64.DEFAULT);
+            // écrit l'image dans le cache (couvert par le FileProvider : cache-path ".")
+            java.io.File dir = new java.io.File(getContext().getCacheDir(), "shared");
+            dir.mkdirs();
+            java.io.File f = new java.io.File(dir, "Ferro_" + System.currentTimeMillis() + ".jpg");
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+            fos.write(bytes);
+            fos.close();
+            android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                getContext(), getContext().getPackageName() + ".fileprovider", f);
+            android.content.Intent send = new android.content.Intent(android.content.Intent.ACTION_SEND);
+            send.setType("image/jpeg");
+            send.putExtra(android.content.Intent.EXTRA_STREAM, uri);
+            send.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            android.content.Intent chooser = android.content.Intent.createChooser(send, "Partager le scan");
+            chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(chooser);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : "Erreur de partage");
+        }
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
         JSObject data = new JSObject();
