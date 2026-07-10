@@ -253,6 +253,10 @@
       <input type="range" id="smooth" min="0" max="90" value="30" step="5">
     </div>
   </div>
+  <div class="ctrl">
+    <label>Seuil d'alerte <span id="threshVal">10%</span></label>
+    <input type="range" id="thresh" min="0" max="80" value="10" step="5">
+  </div>
   <div class="toggles">
     <button class="tog active" id="hapticBtn">Vibration ON</button>
     <button class="tog" id="audioBtn">Son OFF</button>
@@ -270,7 +274,7 @@
 
   let sensor=null, running=false, hold=false, mode='meter';
   let baseline=null, smoothed=0;
-  let haptic=true, audioOn=false;
+  let haptic=true, audioOn=false, alertThresh=0.10;   // seuil sous lequel son+vibreur restent muets
   let calibrating=false, calSamples=[], calStart=0;
   let audioCtx=null, osc=null, gain=null, lastBuzz=0, lastBeepT=0;
   // auto-épinglage des pics (mode scan)
@@ -306,7 +310,8 @@
         dot=el('dot'),axisValEl=el('axisVal'),scanHintEl=el('scanHint'),trendEl=el('trend'),reticleEl=el('reticle'),
         dirDotEl=el('dirDot'),dialEl=el('dial'),
         calBannerEl=el('calBanner'),calTxtEl=el('calTxt'),calSubEl=el('calSub'),
-        sensR=el('sens'),smoothR=el('smooth'),sensVal=el('sensVal'),smoothVal=el('smoothVal');
+        sensR=el('sens'),smoothR=el('smooth'),sensVal=el('sensVal'),smoothVal=el('smoothVal'),
+        threshR=el('thresh'),threshVal=el('threshVal');
 
   const R=92,CIRC=2*Math.PI*R;
   gFill.style.strokeDasharray=CIRC; gFill.style.strokeDashoffset=CIRC;
@@ -339,13 +344,14 @@
   // --- persistance des réglages ---
   function saveSettings(){
     try{localStorage.setItem('ferro.settings',JSON.stringify(
-      {sens:sensitivity,smooth:+smoothR.value,audio:audioOn,haptic:haptic}));}catch(e){}
+      {sens:sensitivity,smooth:+smoothR.value,audio:audioOn,haptic:haptic,thresh:+threshR.value}));}catch(e){}
   }
   function loadSettings(){
     let s;try{s=JSON.parse(localStorage.getItem('ferro.settings')||'null');}catch(e){}
     if(!s)return;
     if(s.sens){sensitivity=s.sens;sensR.value=s.sens;sensVal.textContent='×'+s.sens;}
     if(s.smooth!=null){alpha=s.smooth/100;smoothR.value=s.smooth;smoothVal.textContent=s.smooth+'%';}
+    if(s.thresh!=null){alertThresh=s.thresh/100;threshR.value=s.thresh;threshVal.textContent=s.thresh+'%';}
     haptic=s.haptic!==false;
     const hb=el('hapticBtn');hb.classList.toggle('active',haptic);hb.textContent='Vibration '+(haptic?'ON':'OFF');
     audioOn=!!s.audio;
@@ -356,6 +362,7 @@
   // --- réglages ---
   sensR.oninput=()=>{sensitivity=+sensR.value;sensVal.textContent='×'+sensitivity;saveSettings();};
   smoothR.oninput=()=>{alpha=+smoothR.value/100;smoothVal.textContent=smoothR.value+'%';saveSettings();};
+  threshR.oninput=()=>{alertThresh=+threshR.value/100;threshVal.textContent=threshR.value+'%';saveSettings();};
   el('hapticBtn').onclick=e=>{haptic=!haptic;e.target.classList.toggle('active',haptic);e.target.textContent='Vibration '+(haptic?'ON':'OFF');saveSettings();};
   el('audioBtn').onclick=e=>{audioOn=!audioOn;e.target.classList.toggle('active',audioOn);e.target.textContent='Son '+(audioOn?'ON':'OFF');audioOn?initAudio():stopAudio();saveSettings();};
   el('calBtn').onclick=startCalibration;
@@ -397,7 +404,7 @@
   // son type détecteur : des bips dont la cadence ET la hauteur montent avec le signal
   function driveAudio(n){
     if(!audioOn||!osc)return;
-    if(n<0.08){gain.gain.value=0;return;}                 // silence au repos
+    if(n<alertThresh){gain.gain.value=0;return;}          // silence sous le seuil d'alerte
     const now=performance.now();
     const rate=2+n*13;                                    // 2 bips/s (faible) → 15 bips/s (fort)
     const interval=1000/rate;
@@ -521,7 +528,7 @@
 
     // retour haptique + audio dans les 2 modes
     driveAudio(norm);
-    if(haptic&&norm>0.5){
+    if(haptic&&norm>0.5&&norm>=alertThresh){
       const gap=norm>0.8?90:220;
       if(now-lastBuzz>gap){buzz(norm>0.8?40:18);lastBuzz=now;}
     }
@@ -805,7 +812,7 @@
     else if(mode==='scan') pushScan(norm);
     else updatePhotoLevel(norm);
     driveAudio(norm);
-    if(haptic&&norm>0.5){
+    if(haptic&&norm>0.5&&norm>=alertThresh){
       const gap=norm>0.8?90:220;
       if(t-lastBuzz>gap){buzz(norm>0.8?40:18);lastBuzz=t;}
     }
