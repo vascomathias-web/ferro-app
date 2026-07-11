@@ -502,6 +502,8 @@
       el('cbVerdict').style.color='var(--dim)'; return;
     }
     el('cbVerdict').textContent='approche un câble/lampe allumé…'; el('cbVerdict').style.color='var(--dim)';
+    calibrating=false; calBannerHide();               // pas de calibration métal en mode câble
+    setState('live'); statusEl.textContent='test câble';
     // un seul start() (il désenregistre déjà avant) → pas de course entre stop et start
     nativeMag.start({fastest:true}).catch(e=>{
       el('cbVerdict').textContent='err capteur : '+(e&&e.message?e.message:e);el('cbVerdict').style.color='var(--hot)';});
@@ -516,6 +518,7 @@
   function calBannerHide(){calBannerEl.classList.add('hidden');}
 
   function startCalibration(){
+    if(mode==='cable')return;   // le test câble n'utilise pas la calibration métal (sinon bannière figée)
     calibrating=true;calStart=performance.now();lastCalSec=-1;calSamples.length=0;
     medX.length=medY.length=medZ.length=0;
     setState('cal');verdictEl.textContent='calibrage…';verdictEl.style.color='var(--dim)';
@@ -1035,8 +1038,9 @@
       stopAudio();setState('pause');statusEl.textContent='EN PAUSE';
     }else{
       try{if(sensor)sensor.start();}catch(e){} try{if(accel)accel.start();}catch(e){} try{if(gyro)gyro.start();}catch(e){}
-      try{if(nativeMag)nativeMag.start(mode==='cable'?{fastest:true}:{frequency:50});}catch(e){}
-      moving=false;lastAcc=null;baseAlpha=null;startCalibration();   // remet l'état 'cal'
+      moving=false;lastAcc=null;baseAlpha=null;
+      if(mode==='cable'){ enterCable(); }   // le test câble se relance seul (start fastest, sans calibration)
+      else { try{if(nativeMag)nativeMag.start({frequency:50});}catch(e){} startCalibration(); }
     }
   });
 })();
