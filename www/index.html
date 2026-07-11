@@ -296,6 +296,11 @@
   'use strict';
   const el = id => document.getElementById(id);
 
+  // capte les erreurs JS qui survivent à un crash → affichées au prochain lancement (écran d'accueil)
+  window.onerror=(m,src,ln,col,err)=>{try{localStorage.setItem('ferro.err',((err&&err.stack)||(m+' @'+ln+':'+col)));}catch(e){}};
+  window.addEventListener('unhandledrejection',ev=>{try{localStorage.setItem('ferro.err','promise: '+((ev.reason&&ev.reason.message)||ev.reason));}catch(e){}});
+  try{const le=localStorage.getItem('ferro.err');if(le){const g=el('gateErr');if(g){g.textContent='Dernière erreur :\n'+le;g.classList.remove('hidden');}localStorage.removeItem('ferro.err');}}catch(e){}
+
   let sensor=null, running=false, hold=false, mode='meter';
   let baseline=null, smoothed=0;
   let haptic=true, audioOn=false, alertThresh=0.10;   // seuil sous lequel son+vibreur restent muets
@@ -497,11 +502,13 @@
       el('cbVerdict').style.color='var(--dim)'; return;
     }
     el('cbVerdict').textContent='approche un câble/lampe allumé…'; el('cbVerdict').style.color='var(--dim)';
-    try{ nativeMag.stop(); nativeMag.start({fastest:true}); }catch(e){}
+    // un seul start() (il désenregistre déjà avant) → pas de course entre stop et start
+    nativeMag.start({fastest:true}).catch(e=>{
+      el('cbVerdict').textContent='err capteur : '+(e&&e.message?e.message:e);el('cbVerdict').style.color='var(--hot)';});
   }
   function exitCable(){
     if(!nativeMag || sensorMode!=='mag')return;
-    try{ nativeMag.stop(); nativeMag.start({frequency:50}); }catch(e){}
+    nativeMag.start({frequency:50}).catch(e=>{});
     startCalibration();                           // le mode métal repart proprement
   }
 

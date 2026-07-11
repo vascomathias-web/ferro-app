@@ -49,15 +49,17 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
         }
         sm.unregisterListener(this);                   // évite un double enregistrement si start() rappelé
         boolean fastest = call.getBoolean("fastest", false);
+        // débit BORNÉ : ~200 Hz max en mode "fastest" (assez pour viser 50 Hz), sinon fréquence demandée.
+        // SENSOR_DELAY_FASTEST illimité pouvait saturer le pont natif→WebView et planter l'app.
+        int periodUs;
         if (fastest) {
-            // vitesse maximale que le capteur autorise (test détection 50 Hz secteur)
-            sm.registerListener(this, mag, SensorManager.SENSOR_DELAY_FASTEST);
+            periodUs = 5000;                           // 5 ms ≈ 200 Hz (hint borné)
         } else {
             int freq = call.getInt("frequency", 50);
             if (freq < 1) freq = 1;
-            int periodUs = 1000000 / freq;             // période d'échantillonnage en microsecondes
-            sm.registerListener(this, mag, periodUs);
+            periodUs = 1000000 / freq;
         }
+        sm.registerListener(this, mag, periodUs);
         JSObject ret = new JSObject();
         ret.put("available", true);
         call.resolve(ret);
@@ -148,12 +150,16 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        JSObject data = new JSObject();
-        data.put("x", event.values[0]);
-        data.put("y", event.values[1]);
-        data.put("z", event.values[2]);
-        data.put("t", event.timestamp);                // ns depuis le boot (mesure de la fréquence réelle)
-        notifyListeners("reading", data);
+        try {                                          // une lecture ne doit JAMAIS pouvoir planter l'app
+            JSObject data = new JSObject();
+            data.put("x", event.values[0]);
+            data.put("y", event.values[1]);
+            data.put("z", event.values[2]);
+            data.put("t", (double) event.timestamp);   // ns depuis le boot (mesure de la fréquence réelle)
+            notifyListeners("reading", data);
+        } catch (Throwable t) {
+            // on ignore : mieux vaut rater une lecture que crasher
+        }
     }
 
     @Override
