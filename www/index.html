@@ -406,14 +406,13 @@
 
   // onglets
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
-    const prev=mode;
     mode=t.dataset.screen;
-    if(prev==='cable'&&mode!=='cable')exitCable();   // on quitte le test → retour capteur normal
     document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
     el('meter').classList.toggle('active',mode==='meter');
     el('scan').classList.toggle('active',mode==='scan');
     el('photo').classList.toggle('active',mode==='photo');
     el('cable').classList.toggle('active',mode==='cable');
+    reticleEl.classList.toggle('hidden',mode==='cable');   // pas de réticule en mode câble (évite le doublon d'icône)
     // le bouton d'action change selon le mode
     const ab=el('actionBtn');
     if(mode==='scan'){ ab.textContent='Effacer'; ab.classList.remove('on'); hold=false; setTimeout(sizeScan,30); }
@@ -507,17 +506,10 @@
     el('cbVerdict').textContent='mesure en cours…'; el('cbVerdict').style.color='var(--dim)';
     calibrating=false; calBannerHide();               // pas de calibration métal en mode câble
     setState('live'); statusEl.textContent='test câble';
-    // un seul start() (il désenregistre déjà avant) → pas de course entre stop et start
-    nativeMag.start({fastest:true}).catch(e=>{
-      el('cbVerdict').textContent='err capteur : '+(e&&e.message?e.message:e);el('cbVerdict').style.color='var(--hot)';});
+    // le capteur tourne déjà à 100 Hz depuis le lancement → on écoute juste le flux (aucun redémarrage)
     // garde-fou : distingue « capteur muet » de « capteur lent »
     setTimeout(()=>{ if(mode==='cable'&&cbCount===0){
       el('cbVerdict').textContent='aucune lecture reçue (capteur non démarré ?)';el('cbVerdict').style.color='var(--hot)';} },1600);
-  }
-  function exitCable(){
-    if(!nativeMag || sensorMode!=='mag')return;
-    nativeMag.start({frequency:50}).catch(e=>{});
-    startCalibration();                           // le mode métal repart proprement
   }
 
   function calBannerShow(t){calBannerEl.classList.remove('hidden');calTxtEl.textContent=t;calSubEl.textContent='4 s';}
@@ -973,7 +965,7 @@
         nativeMag = P.Magneto || (typeof Capacitor.registerPlugin==='function' ? Capacitor.registerPlugin('Magneto') : null);
         if(!nativeMag) throw new Error('plugin Magneto introuvable dans Capacitor.Plugins');
         await nativeMag.addListener('reading',d=>onReading(d.x,d.y,d.z,d.t));
-        await nativeMag.start({frequency:50});
+        await nativeMag.start({frequency:100});   // 100 Hz pour tous les modes (assez pour viser 50 Hz en mode câble)
         sensorMode='mag';
         boot();return;
       }catch(e){
@@ -1044,9 +1036,10 @@
       stopAudio();setState('pause');statusEl.textContent='EN PAUSE';
     }else{
       try{if(sensor)sensor.start();}catch(e){} try{if(accel)accel.start();}catch(e){} try{if(gyro)gyro.start();}catch(e){}
+      try{if(nativeMag)nativeMag.start({frequency:100});}catch(e){}   // capteur relancé à 100 Hz (tous modes)
       moving=false;lastAcc=null;baseAlpha=null;
-      if(mode==='cable'){ enterCable(); }   // le test câble se relance seul (start fastest, sans calibration)
-      else { try{if(nativeMag)nativeMag.start({frequency:50});}catch(e){} startCalibration(); }
+      if(mode==='cable') enterCable();       // réinitialise l'affichage câble (pas de calibration)
+      else startCalibration();
     }
   });
 })();
