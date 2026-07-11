@@ -47,10 +47,17 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
             call.reject("Aucun magnétomètre sur cet appareil");
             return;
         }
-        int freq = call.getInt("frequency", 50);
-        if (freq < 1) freq = 1;
-        int periodUs = 1000000 / freq;                 // période d'échantillonnage en microsecondes
-        sm.registerListener(this, mag, periodUs);
+        sm.unregisterListener(this);                   // évite un double enregistrement si start() rappelé
+        boolean fastest = call.getBoolean("fastest", false);
+        if (fastest) {
+            // vitesse maximale que le capteur autorise (test détection 50 Hz secteur)
+            sm.registerListener(this, mag, SensorManager.SENSOR_DELAY_FASTEST);
+        } else {
+            int freq = call.getInt("frequency", 50);
+            if (freq < 1) freq = 1;
+            int periodUs = 1000000 / freq;             // période d'échantillonnage en microsecondes
+            sm.registerListener(this, mag, periodUs);
+        }
         JSObject ret = new JSObject();
         ret.put("available", true);
         call.resolve(ret);
@@ -145,6 +152,7 @@ public class MagnetoPlugin extends Plugin implements SensorEventListener {
         data.put("x", event.values[0]);
         data.put("y", event.values[1]);
         data.put("z", event.values[2]);
+        data.put("t", event.timestamp);                // ns depuis le boot (mesure de la fréquence réelle)
         notifyListeners("reading", data);
     }
 
