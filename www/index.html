@@ -461,26 +461,33 @@
   // Un fil parcouru par du 230 V alternatif fait osciller le champ magnétique à 50 Hz.
   // On mesure d'abord la vraie fréquence d'échantillonnage, puis l'énergie à 50 Hz (Goertzel)
   // sur |B| débarrassé de sa moyenne (on isole l'oscillation, pas le champ statique).
-  let cbMag=[], cbTms=[], cbHz=0, cb50=0, cb50Peak=0, cbLastShow=0, cbCount=0;
-  const CB_N=96;   // taille de bloc : ~1 s à 100 Hz
+  // fenêtre glissante : intègre sur ~2 s pour abaisser le bruit, recalcule ~4x/s (chevauchement)
+  let cbX=[], cbY=[], cbZ=[], cbTms=[], cbHz=0, cb50=0, cb50Peak=0, cbLastShow=0, cbCount=0, cbHop=0;
+  const CB_WIN=256, CB_HOP=32;
+  // énergie à 50 Hz d'un axe (Goertzel, moyenne retirée pour ignorer le champ statique)
+  function goertzel50(arr,n,coeff){
+    let m=0; for(let i=0;i<n;i++)m+=arr[i]; m/=n;
+    let s1=0,s2=0,s0; for(let i=0;i<n;i++){ s0=(arr[i]-m)+coeff*s1-s2; s2=s1; s1=s0; }
+    return Math.max(0, s1*s1+s2*s2-coeff*s1*s2);
+  }
   function cableSample(x,y,z){
     cbCount++;
-    const m=Math.sqrt(x*x+y*y+z*z);
-    cbMag.push(m); cbTms.push(performance.now());   // horloge JS (fiable) au lieu du timestamp natif
-    if(cbMag.length<CB_N)return;
-    const dt=(cbTms[CB_N-1]-cbTms[0])/1000;         // secondes entre 1er et dernier échantillon
-    cbHz = dt>0 ? (CB_N-1)/dt : 0;
-    let mean=0; for(let i=0;i<CB_N;i++)mean+=cbMag[i]; mean/=CB_N;
-    if(cbHz>=90){                                   // il faut > ~100 Hz pour viser 50 Hz (Nyquist)
-      const w=2*Math.PI*50/cbHz, coeff=2*Math.cos(w);
-      let s1=0,s2=0,s0;
-      for(let i=0;i<CB_N;i++){ s0=(cbMag[i]-mean)+coeff*s1-s2; s2=s1; s1=s0; }
-      cb50=Math.sqrt(Math.max(0,s1*s1+s2*s2-coeff*s1*s2))*2/CB_N;   // amplitude ~µT de la composante 50 Hz
+    cbX.push(x); cbY.push(y); cbZ.push(z); cbTms.push(performance.now());
+    if(cbX.length>CB_WIN){ cbX.shift(); cbY.shift(); cbZ.shift(); cbTms.shift(); }
+    if(cbX.length<CB_WIN) return;
+    if(++cbHop<CB_HOP) return;                       // recalcule toutes les CB_HOP lectures (fenêtre qui glisse)
+    cbHop=0;
+    const n=CB_WIN, dt=(cbTms[n-1]-cbTms[0])/1000;
+    cbHz = dt>0 ? (n-1)/dt : 0;
+    if(cbHz>=90){                                    // il faut > ~100 Hz pour viser 50 Hz (Nyquist)
+      const coeff=2*Math.cos(2*Math.PI*50/cbHz);
+      // énergie 50 Hz sommée sur les 3 axes → capte toute l'oscillation vectorielle, pas juste sa projection
+      const power=goertzel50(cbX,n,coeff)+goertzel50(cbY,n,coeff)+goertzel50(cbZ,n,coeff);
+      cb50=Math.sqrt(power)*2/n;                     // amplitude ~µT de la composante 50 Hz
     }else{
-      cb50=0;                                       // capteur trop lent : 50 Hz hors de portée
+      cb50=0;                                        // capteur trop lent : 50 Hz hors de portée
     }
-    if(cb50>cb50Peak)cb50Peak=cb50; else cb50Peak*=0.9;   // maintien de pic
-    cbMag.length=0; cbTms.length=0;
+    if(cb50>cb50Peak)cb50Peak=cb50; else cb50Peak*=0.92;   // maintien de pic
     renderCable();
   }
   function renderCable(){
@@ -497,7 +504,7 @@
   }
   // entrée/sortie du mode câble : bascule le capteur en échantillonnage maximal
   function enterCable(){
-    cbMag.length=0; cbTms.length=0; cb50=0; cb50Peak=0; cbCount=0;
+    cbX.length=0; cbY.length=0; cbZ.length=0; cbTms.length=0; cbHop=0; cb50=0; cb50Peak=0; cbCount=0;
     el('cbVal').textContent='—'; el('cbHzVal').textContent='—'; el('cbPeak').textContent='pic —';
     if(!nativeMag || sensorMode!=='mag'){
       el('cbVerdict').textContent='indisponible (nécessite l\'app native)';
