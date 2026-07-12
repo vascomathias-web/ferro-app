@@ -181,9 +181,8 @@
 
 <div class="tabs">
   <button class="tab active" data-screen="meter" id="tabMeter">Jauge</button>
-  <button class="tab" data-screen="scan" id="tabScan">Scan</button>
+  <button class="tab" data-screen="scan" id="tabScan">Scan mur</button>
   <button class="tab" data-screen="photo" id="tabPhoto">Photo</button>
-  <button class="tab" data-screen="cable" id="tabCable">Câble</button>
 </div>
 
 <!-- ===== MODE JAUGE ===== -->
@@ -233,28 +232,6 @@
   </div>
 </div>
 
-<!-- ===== MODE CÂBLE (test 50 Hz, expérimental) ===== -->
-<div class="screen" id="cable">
-  <div class="stage">
-    <div class="readout">
-      <svg viewBox="0 0 24 24" style="width:46px;height:46px;stroke:var(--warn);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;margin-bottom:8px"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>
-      <div class="value" id="cbVal">—</div>
-      <div class="unit">OSCILLATION 50 Hz · µT</div>
-      <div class="verdict" id="cbVerdict">approche un câble/lampe allumé…</div>
-      <div class="axis"><em>ÉCHANT.</em><b id="cbHzVal">—</b></div>
-      <div class="trend" id="cbPeak">pic —</div>
-    </div>
-  </div>
-  <div class="sweep" style="height:auto;padding:10px 12px">
-    <span class="lbl" style="position:static">Test expérimental</span>
-    <div style="font-size:11px;color:var(--dim);line-height:1.7;margin-top:6px;letter-spacing:.3px">
-      Éloigne le tel de tout métal → note la valeur.<br>
-      Approche d'un câble ou d'une lampe ALLUMÉE → compare.<br>
-      Si « échant. » &lt; 100 Hz, le capteur est trop lent pour du 50 Hz.
-    </div>
-  </div>
-</div>
-
 <!-- ===== RÉTICULE CAPTEUR (déplaçable) ===== -->
 <div class="reticle hidden" id="reticle"><i></i><span>capteur</span></div>
 
@@ -295,11 +272,6 @@
 (() => {
   'use strict';
   const el = id => document.getElementById(id);
-
-  // capte les erreurs JS qui survivent à un crash → affichées au prochain lancement (écran d'accueil)
-  window.onerror=(m,src,ln,col,err)=>{try{localStorage.setItem('ferro.err',((err&&err.stack)||(m+' @'+ln+':'+col)));}catch(e){}};
-  window.addEventListener('unhandledrejection',ev=>{try{localStorage.setItem('ferro.err','promise: '+((ev.reason&&ev.reason.message)||ev.reason));}catch(e){}});
-  try{const le=localStorage.getItem('ferro.err');if(le){const g=el('gateErr');if(g){g.textContent='Dernière erreur :\n'+le;g.classList.remove('hidden');}localStorage.removeItem('ferro.err');}}catch(e){}
 
   let sensor=null, running=false, hold=false, mode='meter';
   let baseline=null, smoothed=0;
@@ -398,7 +370,6 @@
   el('actionBtn').onclick=e=>{
     if(mode==='scan'){ sizeScan(); scanPainted=0; scanHintEl.style.display='block'; return; }
     if(mode==='photo'){ savePhoto(); return; }
-    if(mode==='cable'){ cb50Peak=0; renderCable(); return; }
     hold=!hold;e.target.classList.toggle('on',hold);e.target.textContent=hold?'Held':'Hold';
   };
   el('shotBtn').onclick=takePhoto;
@@ -411,13 +382,10 @@
     el('meter').classList.toggle('active',mode==='meter');
     el('scan').classList.toggle('active',mode==='scan');
     el('photo').classList.toggle('active',mode==='photo');
-    el('cable').classList.toggle('active',mode==='cable');
-    reticleEl.classList.toggle('hidden',mode==='cable');   // pas de réticule en mode câble (évite le doublon d'icône)
     // le bouton d'action change selon le mode
     const ab=el('actionBtn');
     if(mode==='scan'){ ab.textContent='Effacer'; ab.classList.remove('on'); hold=false; setTimeout(sizeScan,30); }
     else if(mode==='photo'){ ab.textContent='Enregistrer'; ab.classList.remove('on'); hold=false; setTimeout(sizePhoto,30); }
-    else if(mode==='cable'){ ab.textContent='Reset pic'; ab.classList.remove('on'); hold=false; enterCable(); }
     else ab.textContent=hold?'Held':'Hold';
   });
 
@@ -457,73 +425,10 @@
     if(navigator.vibrate)navigator.vibrate(ms);
   }
 
-  // ===================== TEST « CÂBLE SOUS TENSION » (expérimental) =====================
-  // Un fil parcouru par du 230 V alternatif fait osciller le champ magnétique à 50 Hz.
-  // On mesure d'abord la vraie fréquence d'échantillonnage, puis l'énergie à 50 Hz (Goertzel)
-  // sur |B| débarrassé de sa moyenne (on isole l'oscillation, pas le champ statique).
-  // fenêtre glissante : intègre sur ~2 s pour abaisser le bruit, recalcule ~4x/s (chevauchement)
-  let cbX=[], cbY=[], cbZ=[], cbTms=[], cbHz=0, cb50=0, cb50Peak=0, cbLastShow=0, cbCount=0, cbHop=0;
-  const CB_WIN=256, CB_HOP=32;
-  // énergie à 50 Hz d'un axe (Goertzel, moyenne retirée pour ignorer le champ statique)
-  function goertzel50(arr,n,coeff){
-    let m=0; for(let i=0;i<n;i++)m+=arr[i]; m/=n;
-    let s1=0,s2=0,s0; for(let i=0;i<n;i++){ s0=(arr[i]-m)+coeff*s1-s2; s2=s1; s1=s0; }
-    return Math.max(0, s1*s1+s2*s2-coeff*s1*s2);
-  }
-  function cableSample(x,y,z){
-    cbCount++;
-    cbX.push(x); cbY.push(y); cbZ.push(z); cbTms.push(performance.now());
-    if(cbX.length>CB_WIN){ cbX.shift(); cbY.shift(); cbZ.shift(); cbTms.shift(); }
-    if(cbX.length<CB_WIN) return;
-    if(++cbHop<CB_HOP) return;                       // recalcule toutes les CB_HOP lectures (fenêtre qui glisse)
-    cbHop=0;
-    const n=CB_WIN, dt=(cbTms[n-1]-cbTms[0])/1000;
-    cbHz = dt>0 ? (n-1)/dt : 0;
-    if(cbHz>=90){                                    // il faut > ~100 Hz pour viser 50 Hz (Nyquist)
-      const coeff=2*Math.cos(2*Math.PI*50/cbHz);
-      // énergie 50 Hz sommée sur les 3 axes → capte toute l'oscillation vectorielle, pas juste sa projection
-      const power=goertzel50(cbX,n,coeff)+goertzel50(cbY,n,coeff)+goertzel50(cbZ,n,coeff);
-      cb50=Math.sqrt(power)*2/n;                     // amplitude ~µT de la composante 50 Hz
-    }else{
-      cb50=0;                                        // capteur trop lent : 50 Hz hors de portée
-    }
-    if(cb50>cb50Peak)cb50Peak=cb50; else cb50Peak*=0.92;   // maintien de pic
-    renderCable();
-  }
-  function renderCable(){
-    const now=performance.now(); if(now-cbLastShow<120)return; cbLastShow=now;
-    el('cbHzVal').textContent=Math.round(cbHz)+' Hz';
-    el('cbVal').textContent=cb50.toFixed(3);
-    el('cbPeak').textContent='pic '+cb50Peak.toFixed(3)+' µT';
-    let t,c;
-    if(cbHz<90){ t='capteur trop lent — 50 Hz hors de portée ('+Math.round(cbHz)+' Hz)'; c='var(--warn)'; }
-    else if(cb50Peak>0.10){ t='● oscillation 50 Hz — câble ?'; c='var(--hot)'; }
-    else if(cb50Peak>0.04){ t='léger 50 Hz'; c='var(--warn)'; }
-    else { t='pas d\'oscillation (métal inerte / rien)'; c='var(--dim)'; }
-    const v=el('cbVerdict'); v.textContent=t; v.style.color=c; el('cbVal').style.color=c;
-  }
-  // entrée/sortie du mode câble : bascule le capteur en échantillonnage maximal
-  function enterCable(){
-    cbX.length=0; cbY.length=0; cbZ.length=0; cbTms.length=0; cbHop=0; cb50=0; cb50Peak=0; cbCount=0;
-    el('cbVal').textContent='—'; el('cbHzVal').textContent='—'; el('cbPeak').textContent='pic —';
-    if(!nativeMag || sensorMode!=='mag'){
-      el('cbVerdict').textContent='indisponible (nécessite l\'app native)';
-      el('cbVerdict').style.color='var(--dim)'; return;
-    }
-    el('cbVerdict').textContent='mesure en cours…'; el('cbVerdict').style.color='var(--dim)';
-    calibrating=false; calBannerHide();               // pas de calibration métal en mode câble
-    setState('live'); statusEl.textContent='test câble';
-    // le capteur tourne déjà à 100 Hz depuis le lancement → on écoute juste le flux (aucun redémarrage)
-    // garde-fou : distingue « capteur muet » de « capteur lent »
-    setTimeout(()=>{ if(mode==='cable'&&cbCount===0){
-      el('cbVerdict').textContent='aucune lecture reçue (capteur non démarré ?)';el('cbVerdict').style.color='var(--hot)';} },1600);
-  }
-
   function calBannerShow(t){calBannerEl.classList.remove('hidden');calTxtEl.textContent=t;calSubEl.textContent='4 s';}
   function calBannerHide(){calBannerEl.classList.add('hidden');}
 
   function startCalibration(){
-    if(mode==='cable')return;   // le test câble n'utilise pas la calibration métal (sinon bannière figée)
     calibrating=true;calStart=performance.now();lastCalSec=-1;calSamples.length=0;
     medX.length=medY.length=medZ.length=0;
     setState('cal');verdictEl.textContent='calibrage…';verdictEl.style.color='var(--dim)';
@@ -556,9 +461,8 @@
   }
 
   // --- lecture capteur ---
-  function onReading(x,y,z,t){
+  function onReading(x,y,z){
     if(x==null)return;
-    if(mode==='cable'){ cableSample(x,y,z); return; }   // test AC 50 Hz : signal BRUT (la médiane écraserait l'oscillation)
     // 1) filtre médian anti-pics sur chaque composante brute
     const fx=pushMed(medX,x),fy=pushMed(medY,y),fz=pushMed(medZ,z);
 
@@ -971,8 +875,8 @@
         const P=Capacitor.Plugins||{};
         nativeMag = P.Magneto || (typeof Capacitor.registerPlugin==='function' ? Capacitor.registerPlugin('Magneto') : null);
         if(!nativeMag) throw new Error('plugin Magneto introuvable dans Capacitor.Plugins');
-        await nativeMag.addListener('reading',d=>onReading(d.x,d.y,d.z,d.t));
-        await nativeMag.start({frequency:100});   // 100 Hz pour tous les modes (assez pour viser 50 Hz en mode câble)
+        await nativeMag.addListener('reading',d=>onReading(d.x,d.y,d.z));
+        await nativeMag.start({frequency:50});
         sensorMode='mag';
         boot();return;
       }catch(e){
@@ -1043,10 +947,8 @@
       stopAudio();setState('pause');statusEl.textContent='EN PAUSE';
     }else{
       try{if(sensor)sensor.start();}catch(e){} try{if(accel)accel.start();}catch(e){} try{if(gyro)gyro.start();}catch(e){}
-      try{if(nativeMag)nativeMag.start({frequency:100});}catch(e){}   // capteur relancé à 100 Hz (tous modes)
-      moving=false;lastAcc=null;baseAlpha=null;
-      if(mode==='cable') enterCable();       // réinitialise l'affichage câble (pas de calibration)
-      else startCalibration();
+      try{if(nativeMag)nativeMag.start({frequency:50});}catch(e){}
+      moving=false;lastAcc=null;baseAlpha=null;startCalibration();   // remet l'état 'cal'
     }
   });
 })();
